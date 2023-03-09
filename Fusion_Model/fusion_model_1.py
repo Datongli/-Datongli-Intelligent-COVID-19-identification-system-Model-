@@ -9,7 +9,7 @@
 现在是需要，因为一个音频文件，是可能有多张图片，目前是想算一下n和p概率的平均
 """
 from 模型和网络 import ResNet, Covnet_3
-import os
+from numpy import *
 import csv
 import pandas as pd
 import os
@@ -62,22 +62,45 @@ def count_mean_std(filepath):
     return mean, std
 
 
-df = pd.read_csv(r"C:\Users\ldt20\Desktop\示例.csv")
-print(df)
-print(len(df.index))  # 打印一下行数
+df = pd.read_csv(r"C:\Users\ldt20\Desktop\data.csv")
+# print(df)
+print("一共有：{}个文件".format(len(df.index)))
 print(df.at[0, 'uid'])
 print(type(df.at[0, 'positive_rate']))
+
+"""
+整理成一个二维列表，里面是字典的形式
+[[{"uid":xxxxx, "label": negative},{}],[]]
+"""
+uid_same = '123'
+wav_dict = []
+j = -1
+for i in range(len(df.index)):
+    uid = df.at[i, 'uid'][:-6]
+    if uid != uid_same:
+        uid_same = uid
+        wav_dict.append({"uid": uid,
+                         "positive_rate": [df.at[i, 'positive_rate']],
+                         "label": df.at[i, 'label']})
+    else:
+        wav_dict[-1]["positive_rate"].append(df.at[i, 'positive_rate'])
+
+print(wav_dict)
+
+
+
+
 # 加时间戳
 nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
 # 权重参数路径
-weights_path = r"D:\学习\大创\data\训练数据集\model\pth\Track1+CoughVid logMel\model_Track1+CoughVid logMel_第1折验证ResNet网络.pth"
+weights_path = r"C:\Users\ldt20\Desktop\训练权重保存\model_Track1+CoughVid logMel train_val最好的权重ResNet18网络.pth"
 work_path = "D:/学习/大创/data/训练数据集/model/photo"
 
 # 图片文件路径
-img_dir_path = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\Track1+CoughVid logMel"
+img_dir_path = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集(over 4s)\Track1+CoughVid logMel test"
 dir_path = os.path.basename(img_dir_path)
 cd = os.path.exists(os.path.join(work_path, dir_path))
 if cd:
@@ -91,27 +114,35 @@ else:
 # class_names = ['cat', 'dog']
 class_names = ['negative', 'positive']
 
+print("=" * 50)
+print("=" * 50)
+print("=" * 50)
 """
 读取一下图片文件的地址
 """
-image_len = len(df.index)
-# img_path: 每一张图片文件的地址，暂定设计为一个二维list,行为不同的音频，列为音频对应的不同图片
+image_len = len(wav_dict)
+# img_path: 每一张图片文件的地址，现在设计为一个一维列表
 img_path = []
-for i in range(len(df.index)):
-    img_path.append([])
-    uid = df.at[i, 'uid']
-    label = df.at[i, 'label']
+for i in range(len(wav_dict)):
+    # img_path.append([])
+    label = wav_dict[i]['label']
+    uid = wav_dict[i]['uid']
+    img_path.append({"uid": uid,
+                     "photo_path": [],
+                     "label": label})
+
     label_path = os.path.join(img_dir_path, label)
     # 遍历文件夹的根目录、文件夹、文件
     for root, dirs, files in os.walk(label_path):
         for file in files:
-            file_name = file[:-16]
+            file_name = file[:-6]
             if file_name == uid:
-                # 存入一个字典，包含两个键值对，分别是图片的绝对路径和对应的真实标签
-                img_path[i].append({'photo_path': os.path.join(label_path, file),
-                                    'label': label})
+                # 存入一部字典，包含两个键值对，分别是图片的绝对路径和对应的uid
+                img_path[-1]["photo_path"].append(os.path.join(label_path, file))
 
 print(img_path)
+print("len_img_path:{}".format(len(img_path)))
+print("len_wav_dict:{}".format(len(wav_dict)))
 
 # 获取GPU设备
 if torch.cuda.is_available():  # 如果有GPU就用，没有就用CPU
@@ -154,11 +185,14 @@ cnf_matrix = np.zeros([2, 2])
 for i in range(len(img_path)):
     positive_scores.append([])
     negative_scores.append([])
-    for j in range(len(img_path[i])):
-        photo_path = img_path[i][j]['photo_path']
-        label = img_path[i][j]['label']
+
+    for j in range(len(img_path[i]["photo_path"])):
+        photo_path = img_path[i]['photo_path'][j]
+        label = img_path[i]['label']
         frame = Image.open(photo_path)
-        img_mean, img_std = count_mean_std(photo_path)
+        # img_mean, img_std = count_mean_std(photo_path)
+        img_mean = [0.33478397, 0.55253255, 0.5409211]
+        img_std = [0.36969644, 0.3965568, 0.33030042]
         data_transform = transforms.Compose([
             # 将输入图像的尺寸变成224*224
             transforms.Resize((224, 224)),
@@ -182,6 +216,8 @@ for i in range(len(img_path)):
             positive_pre = positive_pre.detach().numpy()
             positive_pre = positive_pre.tolist()
             positive_scores[i].append(positive_pre)
+            for k in range(len(wav_dict[i]["positive_rate"])):
+                positive_scores[i].append(wav_dict[i]["positive_rate"][k])
 
             negative_pre = outputs[0]
             negative_pre = negative_pre.detach().numpy()
@@ -190,9 +226,7 @@ for i in range(len(img_path)):
 
 
     # 计算positive的综合概率
-    pre_score.append((sum(positive_scores[i]) + df.at[i, 'positive_rate']) / (1 + len(positive_scores[i])))
-    # 得到类别索引
-    predict_cla = torch.argmax(predict).numpy()
+    pre_score.append(mean(positive_scores[i]))
     if pre_score[i] >= 0.5:
         predict_cla = 1
     else:
@@ -201,27 +235,24 @@ for i in range(len(img_path)):
     predict_name = class_names[predict_cla]
     print("predict_name:{}".format(predict_name))
 
-
     if predict_name == 'negative':
         predict_y = 0
     else:
         predict_y = 1
 
-    if df.at[i, "label"] == 'negative':
+    if wav_dict[i]["label"] == 'negative':
         label_ture = 0
         ture_labels += [0]
     else:
         label_ture = 1
         ture_labels += [1]
 
-    if predict_name == df.at[i, 'label']:
+    if predict_name == wav_dict[i]["label"]:
         acc += 1
 
     cnf_matrix[predict_y][label_ture] += 1
 
-
-
-print(type(pre_score))
+print("预测分数有：{}个".format(len(pre_score)))
 print(pre_score)
 
 print("一共校验了" + str(image_len) + "张图片，其中正确的有" + str(acc) + "张")
@@ -253,11 +284,11 @@ plt.legend(loc="lower right")
 # plt.savefig("D:/学习/大创/data/训练数据集/model/photo/" + dir_path + "/model_ROC_" + str(nowTime) + ".jpg")
 plt.show()
 
-
 """
 绘制混淆矩阵
 """
-Confusion_matrix_path = "D:/学习/大创/data/训练数据集/model/photo/" + dir_path + "/Confusion matrix" + str(nowTime) + ".jpg"
+Confusion_matrix_path = "D:/学习/大创/data/训练数据集/model/photo/" + dir_path + "/Confusion matrix" + str(
+    nowTime) + ".jpg"
 
 
 # 绘制混淆矩阵
@@ -306,4 +337,3 @@ plot_confusion_matrix(cnf_matrix, classes=classes, normalize=True, title='Normal
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
-
