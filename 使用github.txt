@@ -1,0 +1,9 @@
+提交：更新提交到本地端
+推送：将本地端推送到github
+
+因为网络的原因，在pycharm中直接提交并推送现在是有点儿问题的
+所以我现在的策略是：
+pycharm里面点击提交
+在文件夹右键的Git Bash Here里面推送：
+git push --set-upstream origin main
+
