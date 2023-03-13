@@ -21,6 +21,9 @@
 替换掉现在的rfind()用法
 已解决
 """
+"""
+重新写一下读取数据的部分，现在是会有两个大文件夹，一个是训练加验证用的数据，一个是单独的测试用的数据
+"""
 import imageio.v2 as imageio
 from torch.nn import init
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -60,19 +63,20 @@ positive = 'positive'
 
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
-# 数据集文件夹位置
-filepath = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\Track1+CoughVid logMel"
+# 训练加验证数据集文件夹位置
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\训练集\Track1+CoughVid logMel train_val"
+# 测试数据集文件夹位置
+filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集(over 4s)\Track1+CoughVid logMel test"
 
 paddy_labels = {negative: 0,
                 positive: 1}
 
-# 用于存放测试集的数据和标签
-test_data_info = []
+# paddy_labels = {}
 
 
 # 用于包装train和val数据的dataset迭代器，里面剔除了test数据
 class PaddyDataSet_train_val(Dataset):
-    def __init__(self, data_dir, transform=None, test_num=0.1):
+    def __init__(self, data_dir, transform=None):
         """
         数据集
         """
@@ -113,26 +117,17 @@ class PaddyDataSet_train_val(Dataset):
                     # print(sub_dir)
                     label = paddy_labels[sub_dir]
                     data_info.append((path_img, int(label)))
-
-        # data_info 里面包含了全部的数据以及对应的图片，从中选取 test_num 百分数的数据作为验证集
-        data_num = len(data_info)  # 看一下数据集的长度 data_num
-        data_num = int(test_num * data_num)
-        for i in range(data_num):
-            selected_element = random.choice(data_info)
-            test_data_info.append(selected_element)
-            data_info.remove(selected_element)
-
         return data_info
 
 
 # 用于包装test数据的dataset迭代器
 class PaddyDataSet_test(Dataset):
-    def __init__(self, transform=None, test_data_info=test_data_info):
+    def __init__(self, data_dir, transform=None):
         """
         数据集
         """
         # data_info 存储所有图片路径和标签, 在DataLoader中通过index读取样本
-        self.test_info = test_data_info
+        self.test_info = self.get_img_info(data_dir)
         self.transform = transform
         self.temp = np.zeros((224, 224))
 
@@ -149,6 +144,24 @@ class PaddyDataSet_test(Dataset):
 
     def __len__(self):
         return len(self.test_info)
+
+    @staticmethod
+    def get_img_info(data_dir):
+        data_info = list()
+        for root, dirs, _ in os.walk(data_dir):
+            # 遍历类别
+            for sub_dir in dirs:
+                img_names = os.listdir(os.path.join(root, sub_dir))
+                img_names = list(filter(lambda x: x.endswith('.jpg'), img_names))
+
+                # 遍历图片
+                for i in range(len(img_names)):
+                    img_name = img_names[i]
+                    path_img = os.path.join(root, sub_dir, img_name)
+                    # print(sub_dir)
+                    label = paddy_labels[sub_dir]
+                    data_info.append((path_img, int(label)))
+        return data_info
 
 
 def init_weights(layer):
@@ -226,17 +239,17 @@ def getStat(all_data):
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 16  # 每个step训练batch_size张图片
+batch_size = 8  # 每个step训练batch_size张图片
 epochs = 128  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_num_1 = 0.4
-dropout_num_2 = 0.4
+dropout_num_1 = 0.2
+dropout_num_2 = 0.2
 resnet_dropout = 0.4
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.2
+wd = 0.5
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
@@ -246,8 +259,8 @@ stop_epoch = 4
 # （1）文件配置
 # -------------------------------------------------- #
 # 计算图片的总数量
-negative_path = filepath + "\\" + negative
-positive_path = filepath + "\\" + positive
+negative_path = filepath_train_val + "\\" + negative
+positive_path = filepath_train_val + "\\" + positive
 all_photo_num = len(os.listdir(negative_path))
 all_photo_num += len(os.listdir(positive_path))
 # 计算两种样本的比例alpha = p:(n+p)
@@ -256,15 +269,12 @@ positive_num = len(os.listdir(positive_path))
 alpha = positive_num / (positive_num + negative_num)
 print("alpha:{}".format(alpha))
 
-# test_num: 验证集占总数据的比例
-test_num = 0.1
-test_file_num = (int(test_num * all_photo_num) // batch_size) * batch_size
-print(test_file_num)
+
 # 需要用到train_num 初始化一下混淆矩阵
-train_num = all_photo_num * (1 - test_num) * 0.8
+train_num = all_photo_num * 0.8
 
 # 显示一下文件夹的名称
-dir_path = os.path.basename(filepath)
+dir_path = os.path.basename(filepath_train_val)
 print(dir_path)
 # 创建权重的文件夹
 savepath = os.path.join(work_path, 'pth', dir_path)
@@ -296,23 +306,23 @@ else:
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
 # transform = transforms.Compose([transforms.ToTensor()])
-# all_dataset = ImageFolder(root=filepath + '/', transform=transform)
+# all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
 # image_mean, image_std = getStat(all_dataset)
 # print("image_mean:{}".format(image_mean))
 # print("image_std:{}".format(image_std))
 
 # logmel 1:1
-image_mean = [0.33478397, 0.55253255, 0.5409211]
-image_std = [0.36969644, 0.3965568, 0.33030042]
+image_mean = [0.33067024, 0.5446649, 0.540241]
+image_std = [0.36937192, 0.39847413, 0.32845193]
 
 # TFDF logmel 1:1
 # image_mean = [0.49325976, 0.9233102, 0.47890052]
 # image_std = [0.24244241, 0.1476118, 0.23650095]
 
 # 读取数据集后再进行划分
-data_dir = filepath
+data_dir = filepath_train_val
 # 实例化一个对象，用于承接train和val的数据的迭代器
-train_val_data = PaddyDataSet_train_val(data_dir=data_dir,
+train_val_data = PaddyDataSet_train_val(data_dir=filepath_train_val,
                                         transform=transforms.Compose([
                                             # 将输入图像大小调整为224*224
                                             transforms.Resize((224, 224)),
@@ -323,17 +333,20 @@ train_val_data = PaddyDataSet_train_val(data_dir=data_dir,
                                             transforms.Normalize(mean=image_mean, std=image_std)
                                         ]))
 # 实例化一个承接test数据的迭代器
-test_data = PaddyDataSet_test(transform=transforms.Compose([
-    # 将输入图像大小调整为224*224
-    transforms.Resize((224, 224)),
-    # # 数据增强，随机水平翻转
-    # transforms.RandomHorizontalFlip(),
-    # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
-    transforms.ToTensor(),
-    transforms.Normalize(mean=image_mean, std=image_std)]),
-    test_data_info=test_data_info)
-test_index_num = len(test_data_info)
-test_index = [i for i in range(test_index_num)]
+test_data = PaddyDataSet_test(data_dir=filepath_test,
+                              transform=transforms.Compose([
+                                  # 将输入图像大小调整为224*224
+                                  transforms.Resize((224, 224)),
+                                  # # 数据增强，随机水平翻转
+                                  # transforms.RandomHorizontalFlip(),
+                                  # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
+                                  transforms.ToTensor(),
+                                  transforms.Normalize(mean=image_mean, std=image_std)
+                              ]))
+
+test_index = [i for i in range(len(test_data))]
+
+
 # # 先划分成 5份
 kf = KFold(n_splits=k, shuffle=True, random_state=34)
 # 初始化混淆矩阵
@@ -357,7 +370,6 @@ num_1 = line_num
 
 # 加时间戳
 nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-
 
 """
 模型的训练
@@ -406,7 +418,7 @@ for train_index, val_index in kf.split(train_val_data):
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=32, gamma=0.1)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=16)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=128)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -414,7 +426,8 @@ for train_index, val_index in kf.split(train_val_data):
     if os.path.exists(file_name):
         file.write("batch_size:{}\n epoch:{}\n learning_rate:{}\n".format(batch_size, epochs, learning_rate))
         file.write("weight_decay:{}\n".format(wd))
-        file.write("dropout_1:{}, dropout_2:{}, resnet_dropout:{}\n".format(dropout_num_1, dropout_num_2, resnet_dropout))
+        file.write(
+            "dropout_1:{}, dropout_2:{}, resnet_dropout:{}\n".format(dropout_num_1, dropout_num_2, resnet_dropout))
 
     # 初始化一些空白矩阵
     train_loss = []
@@ -655,6 +668,7 @@ for train_index, val_index in kf.split(train_val_data):
             for index in range(len(test_labels)):
                 cnf_matrix[predict_y[index]][labels[index]] += 1
 
+        test_file_num = batch_size * len(test_loader)
         # 计算测试集图片的平均准确率
         acc_test = test_acc / test_file_num
         # 打印测试集的准确率
@@ -688,7 +702,6 @@ for train_index, val_index in kf.split(train_val_data):
     # plt.ylim((0, 1))  # 限制一下绘图的幅度，更具有代表性一些
     plt.legend(["train", "val"], loc="lower right")
     plt.savefig(photo_folder + "\\" + net_name + "网络 model_acc_第{}折_".format(k_num) + str(nowTime) + ".jpg")
-
 
 """
 k折交叉验证的话，在前面绘制了loss和acc
