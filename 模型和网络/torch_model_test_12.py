@@ -35,8 +35,8 @@ import ResNet
 
 # negative = 'cat'
 # positive = 'dog'
-negative = 'negative'
-positive = 'positive'
+# negative = 'negative'
+# positive = 'positive'
 
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
@@ -48,8 +48,8 @@ filepath = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图�
 
 paddy_labels = {"nf": 0,
                 "nm": 1,
-                "pf": 3,
-                "pm": 4}
+                "pf": 2,
+                "pm": 3}
 
 # 用于存放测试集的数据和标签
 test_data_info = []
@@ -221,7 +221,7 @@ learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.2
+wd = 0.4
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
@@ -231,15 +231,12 @@ stop_epoch = 4
 # （1）文件配置
 # -------------------------------------------------- #
 # 计算图片的总数量
-negative_path = filepath + "\\" + negative
-positive_path = filepath + "\\" + positive
-all_photo_num = len(os.listdir(negative_path))
-all_photo_num += len(os.listdir(positive_path))
-# 计算两种样本的比例alpha = p:(n+p)
-negative_num = len(os.listdir(negative_path))
-positive_num = len(os.listdir(positive_path))
-alpha = positive_num / (positive_num + negative_num)
-print("alpha:{}".format(alpha))
+all_photo_num = 0
+for root, dir_list, files in os.walk(filepath):
+    for dir in dir_list:
+        all_photo_num += len(os.listdir(os.path.join(root, dir)))
+
+print(all_photo_num)
 
 # test_num: 验证集占总数据的比例
 test_num = 0.1
@@ -280,11 +277,11 @@ else:
 # （2）构造数据集
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
-transform = transforms.Compose([transforms.ToTensor()])
-all_dataset = ImageFolder(root=filepath + '/', transform=transform)
-image_mean, image_std = getStat(all_dataset)
-print("image_mean:{}".format(image_mean))
-print("image_std:{}".format(image_std))
+# transform = transforms.Compose([transforms.ToTensor()])
+# all_dataset = ImageFolder(root=filepath + '/', transform=transform)
+# image_mean, image_std = getStat(all_dataset)
+# print("image_mean:{}".format(image_mean))
+# print("image_std:{}".format(image_std))
 
 # logmel 1:1
 # image_mean = [0.33478397, 0.55253255, 0.5409211]
@@ -293,6 +290,10 @@ print("image_std:{}".format(image_std))
 # TFDF logmel 1:1
 # image_mean = [0.49325976, 0.9233102, 0.47890052]
 # image_std = [0.24244241, 0.1476118, 0.23650095]
+
+# 男女阴阳
+image_mean = [0.33474952, 0.5528612, 0.541093]
+image_std = [0.36960745, 0.3964971, 0.33032578]
 
 # 读取数据集后再进行划分
 data_dir = filepath
@@ -586,7 +587,7 @@ for train_index, val_index in kf.split(train_val_data):
     savename = savepath + '\\model_' + dir_path + "_第{}折验证".format(k_num) + net_name + "网络" + '.pth'
     weightpath = savename
     # 初始化网络
-    net = ResNet.resnet18(num_classes=2, include_top=True)
+    net = ResNet.resnet18(num_classes=4, include_top=True)
     # net = models.resnet18(weights=None)
     # num_ftrs = net.fc.in_features
     # net.fc = nn.Linear(num_ftrs, 2)
@@ -619,26 +620,50 @@ for train_index, val_index in kf.split(train_val_data):
             #  前向传播
             outputs = net(test_images.to(device))
             # 添加softmax层
-            # outputs = nn.Softmax(dim=1)(outputs)
+            outputs = nn.Softmax(dim=1)(outputs)
             # 预测分数的最大值
             predict_y = torch.max(outputs, dim=1)[1]
             # 累加每个step的准确率
             test_acc += (predict_y == test_labels.to(device)).sum().item()
             test_step += 1
 
-            # 准备roc曲线所需要的数据
-            positive_pre = outputs[:, 1]
-            positive_pre = positive_pre.cpu()
-            positive_pre = positive_pre.detach().numpy()
+            """
+            准备roc曲线所需要的数据
+            """
+            n_p_score = []  # 二维矩阵，前面为negative，后面为positive
+            outputs = outputs.cpu()
+            outputs = outputs.detach().numpy()
+            outputs = outputs.tolist()
+            for i in range(len(outputs)):
+                n_p_score.append([])
+                n_p_score[i].append((outputs[i][0] + outputs[i][1]))
+                n_p_score[i].append((outputs[i][2] + outputs[i][3]))
+
+            n_p_score = np.array(n_p_score)
+            positive_pre = n_p_score[:, 1]
             positive_pre = positive_pre.tolist()
-            labels = test_labels.detach().numpy()
-            labels = labels.tolist()
+
+
+            labels_score = test_labels.detach().numpy()
+            labels_score = labels_score.tolist()
+            labels = []
+            predict_y1 = []
+            for i in range(len(labels_score)):
+                if labels_score[i] <= 1:
+                    labels.append(0)
+                else:
+                    labels.append(1)
+                if predict_y[i] <= 1:
+                    predict_y1.append(0)
+                else:
+                    predict_y1.append(1)
+
             pre_score += positive_pre
             labels_epoch += labels
 
             # 更新混淆矩阵
             for index in range(len(test_labels)):
-                cnf_matrix[predict_y[index]][labels[index]] += 1
+                cnf_matrix[predict_y1[index]][labels[index]] += 1
 
         # 计算测试集图片的平均准确率
         acc_test = test_acc / test_file_num
@@ -688,6 +713,11 @@ sum = 0
 clr_1 = 'tab:green'
 clr_2 = 'tab:green'
 clr_3 = 'k'
+
+print(labels_k)
+print(len(labels_k[0]))
+print(pre_score_k)
+print(len(pre_score_k[0]))
 
 plt.figure()
 for i in range(k):
