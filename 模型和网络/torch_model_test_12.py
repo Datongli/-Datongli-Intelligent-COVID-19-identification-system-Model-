@@ -211,17 +211,17 @@ def getStat(all_data):
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 16  # 每个step训练batch_size张图片
+batch_size = 8  # 每个step训练batch_size张图片
 epochs = 128  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_num_1 = 0.4
-dropout_num_2 = 0.4
+dropout_num_1 = 0.7
+dropout_num_2 = 0.7
 resnet_dropout = 0.4
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.4
+wd = 0.6
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
@@ -391,8 +391,8 @@ for train_index, val_index in kf.split(train_val_data):
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=32, gamma=0.1)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=16)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -472,6 +472,22 @@ for train_index, val_index in kf.split(train_val_data):
             predict_y = torch.max(outputs, dim=1)[1]
 
             # 累加每个step的准确率
+            # n_p_pre = []
+            # n_p_true = []
+            # for i in range(len(predict_y)):
+            #     if predict_y[i] <= 1:
+            #         n_p_pre.append(0)
+            #     else:
+            #         n_p_pre.append(1)
+            #     if labels[i] <= 1:
+            #         n_p_true.append(0)
+            #     else:
+            #         n_p_true.append(1)
+            #
+            # for i in range(len(n_p_true)):
+            #     if n_p_pre[i] == n_p_true[i]:
+            #         running_acc += 1
+
             running_acc = (predict_y == labels.to(device)).sum().item()
             epoch_acc += running_acc
 
@@ -527,6 +543,25 @@ for train_index, val_index in kf.split(train_val_data):
 
                 # 累加每个step的准确率
                 acc += (predict_y == val_labels.to(device)).sum().item()
+
+                # n_p_pre = []
+                # n_p_true = []
+                # val_running_acc = 0
+                # for i in range(len(predict_y)):
+                #     if predict_y[i] <= 1:
+                #         n_p_pre.append(0)
+                #     else:
+                #         n_p_pre.append(1)
+                #     if labels[i] <= 1:
+                #         n_p_true.append(0)
+                #     else:
+                #         n_p_true.append(1)
+                #
+                # for i in range(len(n_p_true)):
+                #     if n_p_pre[i] == n_p_true[i]:
+                #         val_running_acc += 1
+                # running_acc = (predict_y == labels.to(device)).sum().item()
+                # acc += val_running_acc
 
                 val_step += 1
 
@@ -626,6 +661,23 @@ for train_index, val_index in kf.split(train_val_data):
             # 累加每个step的准确率
             test_acc += (predict_y == test_labels.to(device)).sum().item()
             test_step += 1
+
+            # n_p_pre = []
+            # n_p_true = []
+            # for i in range(len(predict_y)):
+            #     if predict_y[i] <= 1:
+            #         n_p_pre.append(0)
+            #     else:
+            #         n_p_pre.append(1)
+            #     if labels[i] <= 1:
+            #         n_p_true.append(0)
+            #     else:
+            #         n_p_true.append(1)
+            #
+            # for i in range(len(n_p_true)):
+            #     if n_p_pre[i] == n_p_true[i]:
+            #         test_acc += 1
+
 
             """
             准备roc曲线所需要的数据
