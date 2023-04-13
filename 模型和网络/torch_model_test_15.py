@@ -24,6 +24,7 @@ from sklearn.metrics import roc_curve, auc
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+import tqdm
 from torchvision.datasets import ImageFolder
 # from pytorchtools import EarlyStopping
 import GhostNet
@@ -46,10 +47,10 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 数据集文件夹位置
-filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\logmel_训练集\Track1+CoughVid logMel train_val"
-filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\logmel_测试集(over 4s)\Track1+CoughVid logMel test"
-filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\TFDF_train_val"
-filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\TFDF_test"
+filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\logMel"
+filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\logMel"
+filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\chirplet"
+filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\chirplet"
 
 
 paddy_labels = {negative: 0,
@@ -139,7 +140,7 @@ def init_weights(layer):
     # 如果为全连接层，权重使用均匀分布初始化，偏置初始化为0.1
     elif type(layer) == nn.Linear:
         nn.init.uniform_(layer.weight, a=-0.1, b=0.1)
-        nn.init.constant_(layer.bias, 0.1)
+        nn.init.constant_(layer.bias, 0.05)
 
 
 class Focal_Loss(torch.nn.Module):
@@ -202,15 +203,16 @@ def getStat(all_data):
 # （0）参数设置
 # -------------------------------------------------- #
 batch_size = 32  # 每个step训练batch_size张图片
-epochs = 128  # 共训练epochs次
+epochs = 32  # 共训练epochs次
 k = 5  # k折交叉验证
 dropout_num_1 = 0.0
 dropout_num_2 = 0.0
-learning_rate = 1e-4
+parallel_drop = 0.5
+learning_rate = 1e-6
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.1
+wd = 0.5
 # wd = None
 # stop_epoch: 早停的批量数
 stop_epoch = 5
@@ -269,10 +271,16 @@ else:
 # image_mean_2, image_std_2 = getStat(all_dataset_2)
 # print(image_mean_1, image_std_1)
 # print(image_mean_2, image_std_2)
-image_mean_1 = [0.33067024, 0.5446649, 0.540241]
-image_std_1 = [0.36937192, 0.39847413, 0.32845193]
-image_mean_2 = [0.4685931, 0.9386316, 0.5017901]
-image_std_2 = [0.2185139, 0.12783225, 0.21242227]
+# logmel+TFDF
+# image_mean_1 = [0.22707403, 0.38559112, 0.5356532]
+# image_std_1 = [0.33076003, 0.402952, 0.26813987]
+# image_mean_2 = [0.4701419, 0.9597695, 0.4981642]
+# image_std_2 = [0.1601769, 0.0995867, 0.1582071]
+# logmel+chirplet
+image_mean_1 = [0.22707403, 0.38559112, 0.5356532]
+image_std_1 = [0.33076003, 0.402952, 0.26813987]
+image_mean_2 = [0.0076702544, 0.024300698, 0.5645628]
+image_std_2 = [0.04797043, 0.11011048, 0.13031848]
 
 """
 实例化dataset对象，便于后续的迭代
@@ -359,7 +367,7 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_net(num_classes=2)
+    net = Parallel_network.parallel_net(num_classes=2, dropout=parallel_drop, include_top=True)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
@@ -368,6 +376,8 @@ for train_index, val_index in kf.split(train_val_data):
     # net = GhostNet_res.resnet18()
     # net = ResNet_attention.resnet18(num_classes=1000, include_top=True)
 
+    # 给模型参数进行初始化
+    # net.apply(init_weights)
     # 获取网络名称
     net_name = net.__class__.__name__
     # 定义优化器
@@ -381,8 +391,8 @@ for train_index, val_index in kf.split(train_val_data):
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.1)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -485,6 +495,16 @@ for train_index, val_index in kf.split(train_val_data):
             # 打印每个step的损失和acc
             print(line, end='')
             print(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
+
+            # 查看每一步后的模型的参数更新
+            # for name, param in net.named_parameters():
+            #     # 名字 数据 梯度 是否需要梯度
+            #     print(name, param.requires_grad)
+            #     print(param.data)
+            #     print(param.grad)
+            #     print(np.shape(param.data))
+            #     print(np.shape(param.grad))
+
             file.write("第{}折, 共:{} step:{} loss:{} acc:{}\n".format(k_num, step_num, step + 1, loss,
                                                                        running_acc / batch_size))
 
@@ -509,7 +529,7 @@ for train_index, val_index in kf.split(train_val_data):
 
                 # 计算预测值和真实值的交叉熵损失
                 # loss = loss_function(outputs, val_labels.to(device))
-                loss = loss_function.forward(outputs, labels.to(device))
+                loss = loss_function.forward(outputs, val_labels.to(device))
 
                 # 累加每个step的损失
                 val_loss_run += loss.item()
@@ -536,11 +556,6 @@ for train_index, val_index in kf.split(train_val_data):
             file.write('total_train_loss:{}, total_train_acc:{}\n'.format(running_loss / (step + 1), acc_train))
             file.write('total_val_loss:{}, total_val_acc:{}\n'.format(val_loss_run / val_setp, acc_val))
 
-            # 进行早停的检查
-            # early_stopping(val_loss_run / val_step, net)
-            # if early_stopping.early_stop:
-            #     print("早停")
-            #     break
             if val_loss[-1] <= min_val_loss:
                 min_val_loss = val_loss[-1]
                 epoch_num = epoch + 1
@@ -587,7 +602,7 @@ for train_index, val_index in kf.split(train_val_data):
     weightpath = savename
     # 初始化网络
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_net(num_classes=2)
+    net = Parallel_network.parallel_net(num_classes=2, include_top=True)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
     # net = Covnet_3.Covnet()
