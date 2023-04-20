@@ -3,6 +3,7 @@ from torch import nn
 from torchstat import stat  # 查看网络参数
 from torchsummary import summary  # 查看网络结构
 import torch.nn.functional as F
+import numpy as np
 
 # -------------------------------------------- #
 # （1）残差单元
