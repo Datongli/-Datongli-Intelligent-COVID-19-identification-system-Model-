@@ -26,6 +26,7 @@
 """
 import imageio.v2 as imageio
 from torch.nn import init
+import sys
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import datetime
 import itertools
@@ -64,14 +65,12 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 训练加验证数据集文件夹位置
-filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\训练集\Track1+CoughVid logMel train_val"
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\chirplet"
 # 测试数据集文件夹位置
-filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集(over 4s)\Track1+CoughVid logMel test"
+filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\chirplet"
 
 paddy_labels = {negative: 0,
                 positive: 1}
-
-# paddy_labels = {}
 
 
 # 用于包装train和val数据的dataset迭代器，里面剔除了test数据
@@ -239,21 +238,21 @@ def getStat(all_data):
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 8  # 每个step训练batch_size张图片
+batch_size = 16  # 每个step训练batch_size张图片
 epochs = 128  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_num_1 = 0.2
-dropout_num_2 = 0.2
-resnet_dropout = 0.4
+dropout_num_1 = 0.4
+dropout_num_2 = 0.5
+resnet_dropout = 0.8
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.5
+wd = 0.2
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
-stop_epoch = 4
+stop_epoch = 10
 
 # -------------------------------------------------- #
 # （1）文件配置
@@ -269,9 +268,6 @@ positive_num = len(os.listdir(positive_path))
 alpha = positive_num / (positive_num + negative_num)
 print("alpha:{}".format(alpha))
 
-
-# 需要用到train_num 初始化一下混淆矩阵
-train_num = all_photo_num * 0.8
 
 # 显示一下文件夹的名称
 dir_path = os.path.basename(filepath_train_val)
@@ -305,19 +301,27 @@ else:
 # （2）构造数据集
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
-# transform = transforms.Compose([transforms.ToTensor()])
-# all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
-# image_mean, image_std = getStat(all_dataset)
-# print("image_mean:{}".format(image_mean))
-# print("image_std:{}".format(image_std))
+transform = transforms.Compose([transforms.ToTensor()])
+all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
+image_mean, image_std = getStat(all_dataset)
+print("image_mean:{}".format(image_mean))
+print("image_std:{}".format(image_std))
 
 # logmel 1:1
-image_mean = [0.33067024, 0.5446649, 0.540241]
-image_std = [0.36937192, 0.39847413, 0.32845193]
+# image_mean = [0.33067024, 0.5446649, 0.540241]
+# image_std = [0.36937192, 0.39847413, 0.32845193]
 
 # TFDF logmel 1:1
-# image_mean = [0.49325976, 0.9233102, 0.47890052]
-# image_std = [0.24244241, 0.1476118, 0.23650095]
+# image_mean = [0.4685931, 0.9386316, 0.5017901]
+# image_std = [0.2185139, 0.12783225, 0.21242227]
+
+# TFDF
+# image_mean = [0.4701419, 0.9597695, 0.4981642]
+# image_std = [0.1601769, 0.0995867, 0.1582071]
+
+# chirplet
+# image_mean = [0.009499544, 0.035353526, 0.5971568]
+# image_std = [0.06146683, 0.13707194, 0.15230046]
 
 # 读取数据集后再进行划分
 data_dir = filepath_train_val
@@ -351,7 +355,6 @@ test_index = [i for i in range(len(test_data))]
 kf = KFold(n_splits=k, shuffle=True, random_state=34)
 # 初始化混淆矩阵
 cnf_matrix = np.zeros([2, 2])
-step_num = int(train_num / batch_size)
 # classes = data.classes
 
 
@@ -364,9 +367,6 @@ step_num = int(train_num / batch_size)
 # （4）网络训练
 # -------------------------------------------------- #
 
-# 这一段代码是为了过程化训练进程做准备
-line_num = step_num / 20.0
-num_1 = line_num
 
 # 加时间戳
 nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
@@ -390,7 +390,7 @@ for train_index, val_index in kf.split(train_val_data):
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
-    # net = Covnet_3.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
+    # net = Covnet_3.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2, out=2)
     # net = efficientnet.efficientnet_b0(num_classes=2)
     # net = GhostNet_res.resnet18()
     # net = ResNet_attention.resnet18(num_classes=1000, include_top=True)
@@ -417,8 +417,8 @@ for train_index, val_index in kf.split(train_val_data):
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=32, gamma=0.1)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=128)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=16)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -466,18 +466,35 @@ for train_index, val_index in kf.split(train_val_data):
         running_loss = 0.0
         epoch_acc = 0.0
         num_0 = 0
-        num_1 = line_num
-        line = "[" + ">" + "·" * 19 + "]"
+
 
         # 每个step训练一个batch
         # enumerate：遍历，返回索引和元素
         # for step, data in tqdm(enumerate(train_loader), desc="train",unit='photo'):
-        for step, data in enumerate(train_loader):
+        for step, data in tqdm(enumerate(train_loader), total=len(train_loader), file=sys.stdout,
+                               desc="共{}轮迭代，第{}轮迭代".format(epochs, epoch + 1), ncols=80, colour='yellow'):
             running_acc = 0.0
             num_0 += 1
 
             # data中包含图像及其对应的标签
             images, labels = data
+
+
+
+            """
+            尝试将数组反转成图片
+            """
+            # for i in images:
+            #     transform = transforms.Compose([transforms.ToPILImage()])
+            #     image = transform(i)
+            #     plt.imshow(image)
+            #     plt.show()
+            #     i = i * torch.tensor(image_std).view(1, 3, 1, 1) + torch.tensor(image_mean).view(1, 3, 1, 1)
+            #     transform = transforms.Compose([transforms.ToPILImage()])
+            #     i = i[0]
+            #     image = transform(i)
+            #     plt.imshow(image)
+            #     plt.show()
 
             # print(labels)
             # labels = torch.nn.functional.one_hot(labels, num_classes=2)
@@ -510,17 +527,17 @@ for train_index, val_index in kf.split(train_val_data):
             # 累加每个step的损失
             running_loss += loss.item()
 
-            # 可视化训练过程（进度条的形式）
-            if num_0 <= num_1:
-                line = "[" + "=" * int(num_1 / line_num - 1) + ">" + "·" * (19 - int(num_1 / line_num - 1)) + "]"
-            else:
-                num_1 += line_num
-                line = "[" + "=" * int(num_1 / line_num - 1) + ">" + "·" * (19 - int(num_1 / line_num - 1)) + "]"
             # 打印每个step的损失和acc
-            print(line, end='')
-            print(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
-            file.write("第{}折, 共:{} step:{} loss:{} acc:{}\n".format(k_num, step_num, step + 1, loss,
-                                                                       running_acc / batch_size))
+            tqdm.write(f'loss:{loss} acc:{running_acc / batch_size}')
+
+            # 查看每一步后的模型的参数更新
+            # for name, param in net.named_parameters():
+            #     # 名字 数据 梯度 是否需要梯度
+            #     print(name, param.data, param.grad, param.requires_grad)
+            #     print(np.shape(param.data))
+            #     print(np.shape(param.grad))
+
+            file.write("第{}折, step:{} loss:{} acc:{}\n".format(k_num,  step + 1, loss, running_acc / batch_size))
 
         # -------------------------------------------------- #
         # （5）网络验证
@@ -541,6 +558,21 @@ for train_index, val_index in kf.split(train_val_data):
                 # print(val_labels)
                 # 前向传播
                 outputs = net(val_images.to(device))
+
+                """
+                尝试反转成图片
+                """
+                # for i in val_images:
+                #     transform = transforms.Compose([transforms.ToPILImage()])
+                #     image = transform(i)
+                #     plt.imshow(image)
+                #     plt.show()
+                #     i = i * torch.tensor(image_std).view(1, 3, 1, 1) + torch.tensor(image_mean).view(1, 3, 1, 1)
+                #     transform = transforms.Compose([transforms.ToPILImage()])
+                #     i = i[0]
+                #     image = transform(i)
+                #     plt.imshow(image)
+                #     plt.show()
 
                 # 计算预测值和真实值的交叉熵损失
                 loss = loss_function(outputs, val_labels.to(device))
@@ -604,6 +636,8 @@ for train_index, val_index in kf.split(train_val_data):
                 savename = savepath + '\\model_' + dir_path + "最好的权重" + net_name + "网络" + '.pth'
                 # 保存当前权重
                 torch.save(net.state_dict(), savename, _use_new_zipfile_serialization=False)
+
+
         # 学习率更新：根据回带的次数来更新学习率
         scheduler.step()
 
@@ -666,7 +700,7 @@ for train_index, val_index in kf.split(train_val_data):
 
             # 更新混淆矩阵
             for index in range(len(test_labels)):
-                cnf_matrix[predict_y[index]][labels[index]] += 1
+                cnf_matrix[labels[index]][predict_y[index]] += 1
 
         test_file_num = batch_size * len(test_loader)
         # 计算测试集图片的平均准确率
@@ -820,32 +854,35 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     #     else:
     #         print('显示具体数字：')
     #         print(cm)
-    plt.figure(dpi=320, figsize=(12, 12))
+    plt.figure(dpi=320, figsize=(8, 8))
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title)
+    plt.title(title, fontdict={'fontsize': 20})
     plt.colorbar()
     tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
+    plt.xticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
+    plt.yticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
     # matplotlib版本问题，如果不加下面这行代码，则绘制的混淆矩阵上下只能显示一半，有的版本的matplotlib不需要下面的代码，分别试一下即可
     plt.ylim(len(classes) - 0.5, -0.5)
-    # fmt = '.2f' if normalize else 'd'
-    fmt = '.2f'
+    fmt = '.2f' if normalize else '.0f'
+    # fmt = '.2f'
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
+                 color="red" if cm[i, j] > thresh else "red",
+                 fontdict={'fontsize': 40})
 
     plt.tight_layout()
-    plt.xlabel('True label')
-    plt.ylabel('Predicted label')
+    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
+    plt.ylabel('True label', fontdict={'fontsize': 20})
+    plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
+    # plt.show()
     plt.savefig(path)
 
 
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
 classes = ['negative', 'positive']
-plot_confusion_matrix(cnf_matrix, classes=classes, normalize=True, title='Normalized confusion matrix')
+plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
