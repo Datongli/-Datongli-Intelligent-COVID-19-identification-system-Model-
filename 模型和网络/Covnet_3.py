@@ -6,7 +6,7 @@ from torchsummary import summary  # 查看网络结构
 
 
 class Covnet(nn.Module):
-    def __init__(self, drop_1=0.4, drop_2=0.5):
+    def __init__(self, drop_1=0.4, drop_2=0.5, out=2):
         super(Covnet, self).__init__()  # 对父类属性初始化
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=0)
         self.bn1 = nn.BatchNorm2d(32)    #在进行Relu之前不会因为数据过大而导致网络性能的不稳定    #batch_size*num_features*height*width，即为其中特征的数量
@@ -18,12 +18,12 @@ class Covnet(nn.Module):
         self.pool2 = nn.AvgPool2d(kernel_size=(2, 2))
 
         self.flat = nn.Flatten()
-        self.dn1 = nn.Linear(in_features=48400, out_features=256)#1s
+        self.dn1 = nn.Linear(in_features=48400, out_features=128)#1s
 
         self.drop1 = nn.Dropout(p=drop_1)
-        self.dn2 = nn.Linear(in_features=256, out_features=128)
+        self.dn2 = nn.Linear(in_features=128, out_features=64)
         self.drop2 = nn.Dropout(p=drop_2)
-        self.dn3 = nn.Linear(in_features=128, out_features=2)
+        self.dn3 = nn.Linear(in_features=64, out_features=out)
         self.sigmoid = nn.Sigmoid()
         self.softmax = nn.Softmax(dim=1)      #理解为概率
     def forward(self,x):
@@ -38,9 +38,10 @@ class Covnet(nn.Module):
         x = self.pool2(x)
 
         x = self.flat(x)
-        # x = self.drop1(x)
+        if self.training:
+            x = self.drop1(x)
         x = self.dn1(x)
-        # x = self.relu(x)
+        x = self.relu(x)
 
         # x = self.pool2(x)
         if self.training:
@@ -51,7 +52,7 @@ class Covnet(nn.Module):
             x = self.drop2(x)
         x = self.relu(x)
         x = self.dn3(x)
-        x = self.softmax(x)
+        # x = self.softmax(x)
         # x = self.sigmoid(x)
         return(x)
 
