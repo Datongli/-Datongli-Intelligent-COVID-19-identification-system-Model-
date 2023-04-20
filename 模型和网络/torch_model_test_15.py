@@ -1,11 +1,19 @@
 """
 此文件用于编写两种不同的数据输入两个网络最后进行综合的模型
 """
+import sys
+
 """
 现在这个版本的代码所存在的问题：
 1、混淆矩阵更改的问题
+完成
 2、重新写一下读取数据的部分，现在是会有两个大文件夹，一个是训练加验证用的数据，一个是单独的测试用的数据
+完成
 3、需要检查为什么模型学习不到东西
+完成，发现是np连接的问题，tensor类型的连接应该使用torch.cat(a, b, dim=)
+"""
+"""
+加上了tqdm的使用
 """
 import imageio.v2 as imageio
 import Parallel_network
@@ -24,7 +32,7 @@ from sklearn.metrics import roc_curve, auc
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-import tqdm
+from tqdm import tqdm
 from torchvision.datasets import ImageFolder
 # from pytorchtools import EarlyStopping
 import GhostNet
@@ -47,10 +55,10 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 数据集文件夹位置
-filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\logMel"
-filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\logMel"
-filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\chirplet"
-filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\chirplet"
+filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\now_all_data\训练集\logMel"
+filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\now_all_data\测试集\logMel"
+filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\now_all_data\训练集\TFDF"
+filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\now_all_data\测试集\TFDF"
 
 
 paddy_labels = {negative: 0,
@@ -202,17 +210,17 @@ def getStat(all_data):
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 32  # 每个step训练batch_size张图片
+batch_size = 16  # 每个step训练batch_size张图片
 epochs = 32  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_num_1 = 0.0
-dropout_num_2 = 0.0
+dropout_num_1 = 0.4
+dropout_num_2 = 0.4
 parallel_drop = 0.5
-learning_rate = 1e-6
+learning_rate = 1e-5
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.5
+wd = 0.1
 # wd = None
 # stop_epoch: 早停的批量数
 stop_epoch = 5
@@ -272,15 +280,20 @@ else:
 # print(image_mean_1, image_std_1)
 # print(image_mean_2, image_std_2)
 # logmel+TFDF
+image_mean_1 = [0.3573493, 0.60304385, 0.5451362]
+image_std_1 = [0.37020192, 0.37281695, 0.3404519]
+image_mean_2 = [0.49529085, 0.93743086, 0.47564554]
+image_std_2 = [0.22207487, 0.12830982, 0.21536322]
+# logmel+chirplet
 # image_mean_1 = [0.22707403, 0.38559112, 0.5356532]
 # image_std_1 = [0.33076003, 0.402952, 0.26813987]
-# image_mean_2 = [0.4701419, 0.9597695, 0.4981642]
-# image_std_2 = [0.1601769, 0.0995867, 0.1582071]
-# logmel+chirplet
-image_mean_1 = [0.22707403, 0.38559112, 0.5356532]
-image_std_1 = [0.33076003, 0.402952, 0.26813987]
-image_mean_2 = [0.0076702544, 0.024300698, 0.5645628]
-image_std_2 = [0.04797043, 0.11011048, 0.13031848]
+# image_mean_2 = [0.0076702544, 0.024300698, 0.5645628]
+# image_std_2 = [0.04797043, 0.11011048, 0.13031848]
+# chirplet+TFDF
+# image_mean_1 = [0.009499544, 0.035353526, 0.5971568]
+# image_std_1 = [0.06146683, 0.13707194, 0.15230046]
+# image_mean_2 = [0.49529085, 0.93743086, 0.47564554]
+# image_std_2 = [0.22207487, 0.12830982, 0.21536322]
 
 """
 实例化dataset对象，便于后续的迭代
@@ -367,7 +380,8 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_net(num_classes=2, dropout=parallel_drop, include_top=True)
+    # net = Parallel_network.parallel_net(num_classes=2, dropout=parallel_drop, include_top=True)
+    net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
@@ -391,8 +405,8 @@ for train_index, val_index in kf.split(train_val_data):
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=4)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.1)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -445,7 +459,9 @@ for train_index, val_index in kf.split(train_val_data):
 
         # 每个step训练一个batch
         # enumerate：遍历，返回索引和元素
-        for step, data in enumerate(train_loader):
+        for step, data in tqdm(enumerate(train_loader), total=len(train_loader), file=sys.stdout,
+                               desc="共{}轮迭代，第{}轮迭代".format(epochs, epoch + 1), ncols=80, colour='yellow'):
+        # for step, data in enumerate(train_loader):
             running_acc = 0.0
             num_0 += 1
 
@@ -487,14 +503,8 @@ for train_index, val_index in kf.split(train_val_data):
             running_loss += loss.item()
 
             # 可视化训练过程（进度条的形式）
-            if num_0 <= num_1:
-                line = "[" + "=" * int(num_1 / line_num - 1) + ">" + "·" * (19 - int(num_1 / line_num - 1)) + "]"
-            else:
-                num_1 += line_num
-                line = "[" + "=" * int(num_1 / line_num - 1) + ">" + "·" * (19 - int(num_1 / line_num - 1)) + "]"
-            # 打印每个step的损失和acc
-            print(line, end='')
-            print(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
+            tqdm.write(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
+            # print(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
 
             # 查看每一步后的模型的参数更新
             # for name, param in net.named_parameters():
@@ -602,7 +612,8 @@ for train_index, val_index in kf.split(train_val_data):
     weightpath = savename
     # 初始化网络
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_net(num_classes=2, include_top=True)
+    # net = Parallel_network.parallel_net(num_classes=2, include_top=True)
+    net = Parallel_network.parallel_covnet(num_classes=2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
     # net = Covnet_3.Covnet()
