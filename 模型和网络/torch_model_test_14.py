@@ -23,6 +23,7 @@
 """
 """
 重新写一下读取数据的部分，现在是会有两个大文件夹，一个是训练加验证用的数据，一个是单独的测试用的数据
+已完成
 """
 import imageio.v2 as imageio
 from torch.nn import init
@@ -65,9 +66,9 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 训练加验证数据集文件夹位置
-filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\训练集\chirplet"
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\训练集\chirplet"
 # 测试数据集文件夹位置
-filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\四种谱图合集\测试集\chirplet"
+filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\测试集\chirplet"
 
 paddy_labels = {negative: 0,
                 positive: 1}
@@ -239,16 +240,19 @@ def getStat(all_data):
 # （0）参数设置
 # -------------------------------------------------- #
 batch_size = 16  # 每个step训练batch_size张图片
-epochs = 128  # 共训练epochs次
+epochs = 64  # 共训练epochs次
 k = 5  # k折交叉验证
+# 这两个是用于covnet的dropout参数
 dropout_num_1 = 0.4
 dropout_num_2 = 0.5
-resnet_dropout = 0.8
+# 这个是用于resnet的dropout参数
+resnet_dropout = 0.2
+# 学习率
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.2
+wd = 0.01
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
@@ -280,6 +284,7 @@ if cd:
 else:
     print("创建权重保存文件夹")
     os.mkdir(savepath)
+print(savepath)
 # 判断保存图片文件夹是否存在
 photo_folder = os.path.join(work_path, 'photo', dir_path)
 cd = os.path.exists(photo_folder)
@@ -308,20 +313,20 @@ print("image_mean:{}".format(image_mean))
 print("image_std:{}".format(image_std))
 
 # logmel 1:1
-# image_mean = [0.33067024, 0.5446649, 0.540241]
-# image_std = [0.36937192, 0.39847413, 0.32845193]
+# image_mean = [0.327612, 0.5386462, 0.5382104]
+# image_std = [0.36893702, 0.39973584, 0.32598126]
 
 # TFDF logmel 1:1
 # image_mean = [0.4685931, 0.9386316, 0.5017901]
 # image_std = [0.2185139, 0.12783225, 0.21242227]
 
 # TFDF
-# image_mean = [0.4701419, 0.9597695, 0.4981642]
-# image_std = [0.1601769, 0.0995867, 0.1582071]
+# image_mean = [0.46957287, 0.93973273, 0.50070703]
+# image_std = [0.21676934, 0.126844, 0.21070491]
 
 # chirplet
-# image_mean = [0.009499544, 0.035353526, 0.5971568]
-# image_std = [0.06146683, 0.13707194, 0.15230046]
+# image_mean = [0.010246435, 0.03795307, 0.59721166]
+# image_std = [0.064348966, 0.14300026, 0.15483022]
 
 # 读取数据集后再进行划分
 data_dir = filepath_train_val
@@ -418,7 +423,7 @@ for train_index, val_index in kf.split(train_val_data):
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=16)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=4)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -443,14 +448,14 @@ for train_index, val_index in kf.split(train_val_data):
     print("第{}折验证".format(k_num))
     train_fold = torch.utils.data.dataset.Subset(train_val_data, train_index)
     val_fold = torch.utils.data.dataset.Subset(train_val_data, val_index)
-    test_fold = torch.utils.data.dataset.Subset(test_data, test_index)
+    # test_fold = torch.utils.data.dataset.Subset(test_data, test_index)
     # 计算训练集,验证集,测试集的大小
     train_num = len(train_fold)
     val_num = len(val_fold)
     # 打包成DataLoader类型 用于 训练
     train_loader = DataLoader(dataset=train_fold, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(dataset=val_fold, batch_size=batch_size, shuffle=True, drop_last=True)
-    test_loader = DataLoader(dataset=test_fold, batch_size=batch_size, shuffle=True, drop_last=True)
+    test_loader = DataLoader(dataset=test_data, batch_size=batch_size, shuffle=True, drop_last=True)
     # # 早停的实例
     # early_stopping = EarlyStopping(patience=4, delta=0.1, path=savepath + '/model_' + dir_path + "_第{}折验证{}层网络".format(k_num, net_num) + '.pth')
 
