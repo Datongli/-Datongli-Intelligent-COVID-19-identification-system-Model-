@@ -55,10 +55,10 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 数据集文件夹位置
-filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\now_all_data\训练集\logMel"
-filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\now_all_data\测试集\logMel"
-filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\now_all_data\训练集\TFDF"
-filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\now_all_data\测试集\TFDF"
+filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\训练集\logMel"
+filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\测试集\logMel"
+filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\训练集\chirplet"
+filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\测试集\chirplet"
 
 
 paddy_labels = {negative: 0,
@@ -211,19 +211,19 @@ def getStat(all_data):
 # （0）参数设置
 # -------------------------------------------------- #
 batch_size = 16  # 每个step训练batch_size张图片
-epochs = 32  # 共训练epochs次
+epochs = 64  # 共训练epochs次
 k = 5  # k折交叉验证
 dropout_num_1 = 0.4
 dropout_num_2 = 0.4
-parallel_drop = 0.5
+parallel_drop = 0.4
 learning_rate = 1e-5
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.1
+wd = 0.2
 # wd = None
 # stop_epoch: 早停的批量数
-stop_epoch = 5
+stop_epoch = 10
 
 # -------------------------------------------------- #
 # （1）文件配置
@@ -272,18 +272,19 @@ else:
 """
 用于分别求取两个数据集的均值和方差
 """
-# transform = transforms.Compose([transforms.ToTensor()])
-# all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
-# image_mean_1, image_std_1 = getStat(all_dataset_1)
-# all_dataset_2 = ImageFolder(root=filepath_train_val_2 + '/', transform=transform)
-# image_mean_2, image_std_2 = getStat(all_dataset_2)
-# print(image_mean_1, image_std_1)
-# print(image_mean_2, image_std_2)
+transform = transforms.Compose([transforms.ToTensor()])
+all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
+image_mean_1, image_std_1 = getStat(all_dataset_1)
+all_dataset_2 = ImageFolder(root=filepath_train_val_2 + '/', transform=transform)
+image_mean_2, image_std_2 = getStat(all_dataset_2)
+print(image_mean_1, image_std_1)
+print(image_mean_2, image_std_2)
+
 # logmel+TFDF
-image_mean_1 = [0.3573493, 0.60304385, 0.5451362]
-image_std_1 = [0.37020192, 0.37281695, 0.3404519]
-image_mean_2 = [0.49529085, 0.93743086, 0.47564554]
-image_std_2 = [0.22207487, 0.12830982, 0.21536322]
+# image_mean_1 = [0.327612, 0.5386462, 0.5382104]
+# image_std_1 = [0.36893702, 0.39973584, 0.32598126]
+# image_mean_2 = [0.46957287, 0.93973273, 0.50070703]
+# image_std_2 = [0.21676934, 0.126844, 0.21070491]
 # logmel+chirplet
 # image_mean_1 = [0.22707403, 0.38559112, 0.5356532]
 # image_std_1 = [0.33076003, 0.402952, 0.26813987]
@@ -380,8 +381,8 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    # net = Parallel_network.parallel_net(num_classes=2, dropout=parallel_drop, include_top=True)
-    net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
+    net = Parallel_network.parallel_net(num_classes=2, dropout=parallel_drop, include_top=True)
+    # net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
@@ -405,8 +406,8 @@ for train_index, val_index in kf.split(train_val_data):
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=6, gamma=0.1)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -612,8 +613,8 @@ for train_index, val_index in kf.split(train_val_data):
     weightpath = savename
     # 初始化网络
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    # net = Parallel_network.parallel_net(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_covnet(num_classes=2)
+    net = Parallel_network.parallel_net(num_classes=2, include_top=True)
+    # net = Parallel_network.parallel_covnet(num_classes=2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = GhostNet.ghostnet()
     # net = Covnet_3.Covnet()
