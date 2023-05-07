@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import ResNet
 import Covnet_3
 import GhostNet
+import TCNN
 
 # 获取GPU设备
 if torch.cuda.is_available():  # 如果有GPU就用，没有就用CPU
@@ -25,9 +26,11 @@ else:
 
 
 class parallel_net(nn.Module):
-    def __init__(self, num_classes=2, dropout=0.2, include_top=True):
+    def __init__(self, num_classes=2, dropout=0.2, include_top=True, pth_1=None, pth_2=None):
         super(parallel_net, self).__init__()
         # 属性分配
+        self.pth_1 = pth_1
+        self.pth_2 = pth_2
         self.dropout = dropout
         self.include_top = include_top
         self.conv1_outchannels = 128
@@ -35,10 +38,12 @@ class parallel_net(nn.Module):
 
         # 部分一用于承接时频差分特性，暂定使用resnet网络
         # include_top=False 即代表不适用最后的全连接层，还是一个4维张量的输出形式
-        self.part_1 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
+        self.part_1 = ResNet.resnet18(num_classes=2, include_top=True, dropout=self.dropout)
+        self.part_1.load_state_dict(torch.load(self.pth_1, map_location=device))
         # self.part_1 = Covnet_3.Covnet(drop_1=0.2, drop_2=0.2)
         # 部分二用于承接对数梅尔倒谱图，暂定使用resnet网络
-        self.part_2 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
+        self.part_2 = ResNet.resnet18(num_classes=2, include_top=True, dropout=self.dropout)
+        self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
         # self.part_2 = Covnet_3.Covnet(drop_1=0.2, drop_2=0.2)
         # self.part_2 = GhostNet.GhostNet(num_classes=256, dropout=0.2)
         # self.bn = nn.BatchNorm1d(256*2)
@@ -58,26 +63,26 @@ class parallel_net(nn.Module):
         # 全连接分类
         self.fc_1 = nn.Linear(self.conv2_outchannels, num_classes)
         # self.relu = nn.ReLU(inplace=True)
-        # self.fc_2 = nn.Linear(128, 32)
-        # self.fc_3 = nn.Linear(128, num_classes)
+        self.fc_2 = nn.Linear(4, 32)
+        self.fc_3 = nn.Linear(32, num_classes)
 
         # 卷积层权重初始化
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         nn.init.kaiming_normal_(m.weight, mode='fan_out')
 
     # 前向传播
     def forward(self, data_1, data_2):
         x_1 = self.part_1(data_1)
         x_2 = self.part_2(data_2)
-        # x_1 = x_1.cpu()
-        # x_2 = x_2.cpu()
-        # x_1 = x_1.detach().numpy().tolist()
-        # x_2 = x_2.detach().numpy().tolist()
-        # for i in range(len(x_1)):
-        #     for j in range(len(x_2[0])):
-        #         x_1[i].append(x_2[i][j])
-        # x = torch.tensor
+
+        x = torch.cat((x_1, x_2), dim=1)
+        x = x.to(device)
+
+        x = self.fc_2(x)
+        x = self.fc_3(x)
+
+        """
         # 将通道连接起来
         x = torch.cat((x_1, x_2), dim=1)
         x = x.to(device)
@@ -88,7 +93,7 @@ class parallel_net(nn.Module):
         x = self.conv2(x)
         x = self.bn2(x)
         x = self.relu(x)
-
+        
         if self.include_top:
             # 全局平均池化
             x = self.avgpool(x)
@@ -104,6 +109,7 @@ class parallel_net(nn.Module):
             # x = self.fc_3(x)
             # 是不是应该加一层softmax
             # x = self.softmax(x)
+        """
         return x
 
 
@@ -170,4 +176,48 @@ class parallel_covnet(nn.Module):
             # x = self.fc_3(x)
             # 是不是应该加一层softmax
             # x = self.softmax(x)
+        return x
+
+class parallel_model(nn.Module):
+    def __init__(self, num_classes=2, dropout1=0.1, dropout2=0.2, include_top=True):
+        super(parallel_model, self).__init__()
+        # 属性分配
+        self.dropout1 = dropout1
+        self.dropout2 = dropout2
+        self.include_top = include_top
+        self.part_out = 64
+        self.part_1_out = 2
+        self.part_2_out = 2
+
+        # 部分一用于承接时频差分特性，暂定使用resnet网络
+        # include_top=False 即代表不适用最后的全连接层，还是一个4维张量的输出形式
+        self.part_1 = ResNet.resnet18(num_classes=self.part_1_out, include_top=True, dropout=self.dropout1)
+        # 部分二用于承接对数梅尔倒谱图，暂定使用TCNN网络
+        # self.part_2 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
+        # self.part_1 = Covnet_3.Covnet(drop_1=self.dropout_1, drop_2=self.dropout_2)
+        self.part_2 = TCNN.TCNN(out_num=self.part_2_out, dropout=self.dropout2)
+
+        # 全连接分类
+        self.fc = nn.Linear(self.part_1_out + self.part_2_out, num_classes)
+
+        # 卷积层权重初始化
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out')
+
+    # 前向传播
+    def forward(self, data_1, data_2):
+        x_1 = self.part_1(data_1)
+        x_2 = self.part_2(data_2)
+        # 将通道连接起来
+        x = torch.cat((x_1, x_2), dim=1)
+        x = x.to(device)
+
+        if self.include_top:
+            # 打平
+            # x = torch.flatten(x, 1)
+            # 全连接分类
+            x = self.fc(x)
+            x = self.softmax(x)
+
         return x
