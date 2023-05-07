@@ -58,17 +58,17 @@ import Covnet_2
 import Covnet_3
 import ResNet
 
-# negative = 'cat'
-# positive = 'dog'
-negative = 'negative'
-positive = 'positive'
+negative = 'cat'
+positive = 'dog'
+# negative = 'negative'
+# positive = 'positive'
 
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 训练加验证数据集文件夹位置
-filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\训练集\chirplet"
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\cat_vs_dog(new)_2023-05-05-14-53-51\cat_dog_train"
 # 测试数据集文件夹位置
-filepath_test = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\测试集\chirplet"
+filepath_test = r"D:\学习\大创\data\训练数据集\data\cat_vs_dog(new)_2023-05-05-14-53-51\cat_dog_test"
 
 paddy_labels = {negative: 0,
                 positive: 1}
@@ -239,7 +239,7 @@ def getStat(all_data):
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 16  # 每个step训练batch_size张图片
+batch_size = 32  # 每个step训练batch_size张图片
 epochs = 64  # 共训练epochs次
 k = 5  # k折交叉验证
 # 这两个是用于covnet的dropout参数
@@ -294,6 +294,8 @@ else:
     print("创建图片保存文件夹")
     os.mkdir(photo_folder)
 
+# 计算需要多少步，取整
+step_num = int(all_photo_num * 0.8 / batch_size)
 # 获取GPU设备
 if torch.cuda.is_available():  # 如果有GPU就用，没有就用CPU
     device = torch.device('cuda:0')
@@ -306,11 +308,11 @@ else:
 # （2）构造数据集
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
-transform = transforms.Compose([transforms.ToTensor()])
-all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
-image_mean, image_std = getStat(all_dataset)
-print("image_mean:{}".format(image_mean))
-print("image_std:{}".format(image_std))
+# transform = transforms.Compose([transforms.ToTensor()])
+# all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
+# image_mean, image_std = getStat(all_dataset)
+# print("image_mean:{}".format(image_mean))
+# print("image_std:{}".format(image_std))
 
 # logmel 1:1
 # image_mean = [0.327612, 0.5386462, 0.5382104]
@@ -327,6 +329,14 @@ print("image_std:{}".format(image_std))
 # chirplet
 # image_mean = [0.010246435, 0.03795307, 0.59721166]
 # image_std = [0.064348966, 0.14300026, 0.15483022]
+
+# MFCC
+# image_mean = [0.61090595, 0.88897604, 0.3621505]
+# image_std = [0.21205482, 0.16801828, 0.20811893]
+
+# cat_dog
+image_mean = [0.48807245, 0.45488325, 0.41675377]
+image_std = [0.2293499, 0.22479817, 0.22514497]
 
 # 读取数据集后再进行划分
 data_dir = filepath_train_val
@@ -532,8 +542,8 @@ for train_index, val_index in kf.split(train_val_data):
             # 累加每个step的损失
             running_loss += loss.item()
 
-            # 打印每个step的损失和acc
-            tqdm.write(f'loss:{loss} acc:{running_acc / batch_size}')
+            # 可视化训练过程（进度条的形式）
+            tqdm.write(f'共:{step_num} step:{step + 1} loss:{loss} acc:{running_acc / batch_size}')
 
             # 查看每一步后的模型的参数更新
             # for name, param in net.named_parameters():

@@ -47,11 +47,11 @@ def copy(src_path, target_path):
         print('复制完成!')
 
 
-original_dataset_dir = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\Track1+CoughVid logMel"
-# negative = 'cat'
-# positive = 'dog'
-negative = 'negative'
-positive = 'positive'
+original_dataset_dir = r"D:\学习\大创\data\训练数据集\data\cat_vs_dog"
+negative = 'cat'
+positive = 'dog'
+# negative = 'negative'
+# positive = 'positive'
 
 base_dir = original_dataset_dir + "(new)"
 path_1 = negative

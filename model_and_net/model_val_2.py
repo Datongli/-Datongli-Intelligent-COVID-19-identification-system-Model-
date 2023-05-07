@@ -16,6 +16,9 @@ import eca_ResNet
 import GhostNet
 import imageio.v2 as imageio
 
+negative = "negative"
+positive = "positive"
+
 
 def count_mean_std(filepath):
     """
@@ -60,10 +63,10 @@ nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 # （0）参数设置
 # -------------------------------------------------- #
 # 权重参数路径
-weights_path = r"D:\学习\大创\data\训练数据集\model\pth\cat_vs_dog\model_cat_vs_dog_第2折验证ResNet网络.pth"
+weights_path = r"C:\Users\ldt20\Desktop\训练权重保存\Track1+CoughVid logMel train_val ResNet18网络.pth"
 
 # 图片文件路径
-img_dir_path = r"D:\学习\大创\data\训练数据集\data\cat_dog_test"
+img_dir_path = r"D:\学习\大创\data\训练数据集\data\自建数据集\logMel_zj"
 # dir_count = img_dir_path.rfind('/') + 1
 # dir_path = img_dir_path[dir_count:]
 dir_path = os.path.basename(img_dir_path)
@@ -76,9 +79,10 @@ else:
 
 # weights_path = "D:/学习/大创/data/训练数据集/model/pth/melspec(1000_50)/model_melspec(1000_50)最好的权重.pth"
 # 预测索引对应的类别名称
-class_names = ['cat', 'dog']
-# class_names = ['negative', 'positive']
-image_len = len(os.listdir(img_dir_path))
+# class_names = ['cat', 'dog']
+class_names = [negative, positive]
+image_len = len(os.listdir(os.path.join(img_dir_path, negative)))
+image_len += len(os.listdir(os.path.join(img_dir_path, positive)))
 print("一共校验了" + str(image_len) + "张图片")
 
 # 获取GPU设备
@@ -112,68 +116,74 @@ frames = []
 cnf_matrix = np.zeros([2, 2])
 
 for img_path in os.listdir(img_dir_path):
-    label_num = img_path.find('.')
-    label = img_path[:label_num]
-    img_path = img_dir_path + '/' + img_path
-    frame = Image.open(img_path)
-    frames.append(frame)
-    img_mean, img_std = count_mean_std(os.path.join(img_dir_path, img_path))
-    # 预处理函数
-    data_transform = transforms.Compose([
-        # 将输入图像的尺寸变成224*224
-        transforms.Resize((224, 224)),
-        # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
-        transforms.ToTensor(),
-        # 对每个通道的像素进行标准化，给出每个通道的均值和方差
-        # transforms.Normalize(mean=img_mean, std=img_std)
-    ])
-    img = data_transform(frame)
-    # 给图像增加batch维度 [c,h,w]==>[b,c,h,w]
-    img = torch.unsqueeze(img, dim=0)
-    with torch.no_grad():
-        # 前向传播
-        outputs = model(img)
-        # 只有一张图就挤压掉batch维度
-        outputs = torch.squeeze(outputs)
-
-        # 计算图片属于2个类别的概率
-        predict = torch.softmax(outputs, dim=0)
-        print(predict)
-        # 得到类别索引
-        predict_cla = torch.argmax(predict).numpy()
-        print(predict_cla)
-        predict_clas.append(predict_cla)
-
-    # 获取最大预测类别概率
-    predict_score = round(torch.max(predict).item(), 2)
-    predict_scores.append(predict_score)
-    # 获取预测类别的名称
-    predict_name = class_names[predict_cla]
-    predict_names.append(predict_name)
-    if predict_name == 'cat':
-        predict_y = 0
+    if img_path == negative:
+        label = negative
     else:
-        predict_y = 1
+        label = positive
 
-    # 准备绘制roc曲线所需要的数据
-    positive_pre = outputs[1]
-    positive_pre = positive_pre.detach().numpy()
-    positive_pre = positive_pre.tolist()
-    pre_score.append(positive_pre)
-    if label == 'cat':
-        label_ture = 0
-        ture_labels += [0]
-    else:
-        label_ture = 1
-        ture_labels += [1]
+    for photo_img in os.listdir(os.path.join(img_dir_path, img_path)):
+        img_path0 = os.path.join(img_dir_path, img_path, photo_img)
+        frame = Image.open(img_path0)
+        frames.append(frame)
+        img_mean, img_std = count_mean_std(os.path.join(img_dir_path, img_path0))
+        # img_mean = [0.33067024, 0.5446649, 0.540241]
+        # img_std = [0.36937192, 0.39847413, 0.32845193]
+        # 预处理函数
+        data_transform = transforms.Compose([
+            # 将输入图像的尺寸变成224*224
+            transforms.Resize((224, 224)),
+            # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
+            transforms.ToTensor(),
+            # 对每个通道的像素进行标准化，给出每个通道的均值和方差
+            transforms.Normalize(mean=img_mean, std=img_std)
+        ])
+        img = data_transform(frame)
+        # 给图像增加batch维度 [c,h,w]==>[b,c,h,w]
+        img = torch.unsqueeze(img, dim=0)
+        with torch.no_grad():
+            # 前向传播
+            outputs = model(img)
+            # 只有一张图就挤压掉batch维度
+            outputs = torch.squeeze(outputs)
 
-    cnf_matrix[predict_y][label_ture] += 1
+            # 计算图片属于2个类别的概率
+            predict = torch.softmax(outputs, dim=0)
+            print(predict)
+            # 得到类别索引
+            predict_cla = torch.argmax(predict).numpy()
+            print(predict_cla)
+            predict_clas.append(predict_cla)
 
-    if predict_name == label:
-        acc += 1
-        print("labels:{}->pre:{}  预测正确".format(label, predict_name))
-    else:
-        print("labels:{}->pre:{}  预测错误".format(label, predict_name))
+        # 获取最大预测类别概率
+        predict_score = round(torch.max(predict).item(), 2)
+        predict_scores.append(predict_score)
+        # 获取预测类别的名称
+        predict_name = class_names[predict_cla]
+        predict_names.append(predict_name)
+        if predict_name == negative:
+            predict_y = 0
+        else:
+            predict_y = 1
+
+        # 准备绘制roc曲线所需要的数据
+        positive_pre = outputs[1]
+        positive_pre = positive_pre.detach().numpy()
+        positive_pre = positive_pre.tolist()
+        pre_score.append(positive_pre)
+        if label == negative:
+            label_ture = 0
+            ture_labels += [0]
+        else:
+            label_ture = 1
+            ture_labels += [1]
+
+        cnf_matrix[label_ture][predict_y] += 1
+
+        if predict_name == label:
+            acc += 1
+            print("labels:{}->pre:{}  预测正确".format(label, predict_name))
+        else:
+            print("labels:{}->pre:{}  预测错误".format(label, predict_name))
 
 print("一共校验了" + str(image_len) + "张图片，其中正确的有" + str(acc) + "张")
 acc = acc / image_len
@@ -242,32 +252,35 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     #     else:
     #         print('显示具体数字：')
     #         print(cm)
-    plt.figure(dpi=320, figsize=(12, 12))
+    plt.figure(dpi=320, figsize=(8, 8))
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title)
+    plt.title(title, fontdict={'fontsize': 20})
     plt.colorbar()
     tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
+    plt.xticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
+    plt.yticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
     # matplotlib版本问题，如果不加下面这行代码，则绘制的混淆矩阵上下只能显示一半，有的版本的matplotlib不需要下面的代码，分别试一下即可
     plt.ylim(len(classes) - 0.5, -0.5)
-    # fmt = '.2f' if normalize else 'd'
-    fmt = '.2f'
+    fmt = '.2f' if normalize else '.0f'
+    # fmt = '.2f'
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
+                 color="red" if cm[i, j] > thresh else "red",
+                 fontdict={'fontsize': 40})
 
     plt.tight_layout()
-    plt.xlabel('True label')
-    plt.ylabel('Predicted label')
+    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
+    plt.ylabel('True label', fontdict={'fontsize': 20})
+    plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
+    # plt.show()
     plt.savefig(path)
 
 
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
-classes = ['cat', 'dog']
-plot_confusion_matrix(cnf_matrix, classes=classes, normalize=True, title='Normalized confusion matrix')
+classes = ['negative', 'positive']
+plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')

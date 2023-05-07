@@ -1,5 +1,5 @@
 """
-该文件用于特征融合的尝试
+修改过混淆矩阵后
 """
 import imageio.v2 as imageio
 from torch.nn import init
@@ -874,32 +874,35 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     #     else:
     #         print('显示具体数字：')
     #         print(cm)
-    plt.figure(dpi=320, figsize=(12, 12))
+    plt.figure(dpi=320, figsize=(8, 8))
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title)
+    plt.title(title, fontdict={'fontsize': 20})
     plt.colorbar()
     tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
+    plt.xticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
+    plt.yticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
     # matplotlib版本问题，如果不加下面这行代码，则绘制的混淆矩阵上下只能显示一半，有的版本的matplotlib不需要下面的代码，分别试一下即可
     plt.ylim(len(classes) - 0.5, -0.5)
-    # fmt = '.2f' if normalize else 'd'
-    fmt = '.2f'
+    fmt = '.2f' if normalize else '.0f'
+    # fmt = '.2f'
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
+                 color="red" if cm[i, j] > thresh else "red",
+                 fontdict={'fontsize': 40})
 
     plt.tight_layout()
-    plt.xlabel('True label')
-    plt.ylabel('Predicted label')
+    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
+    plt.ylabel('True label', fontdict={'fontsize': 20})
+    plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
+    # plt.show()
     plt.savefig(path)
 
 
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
 classes = ['negative', 'positive']
-plot_confusion_matrix(cnf_matrix, classes=classes, normalize=True, title='Normalized confusion matrix')
+plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')

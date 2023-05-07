@@ -41,11 +41,10 @@ import ResNet
 nowTime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 # 初始化混淆矩阵
 cnf_matrix = np.zeros([2, 2])
-n = 128 / 2
-cnf_matrix[0][0] = 0.9 * n
-cnf_matrix[0][1] = 0.1 * n
-cnf_matrix[1][0] = 0.28 * n
-cnf_matrix[1][1] = 0.72 * n
+cnf_matrix[0][0] = 58
+cnf_matrix[0][1] = 6
+cnf_matrix[1][0] = 11
+cnf_matrix[1][1] = 55
 Confusion_matrix_path = os.path.join(r"C:\Users\ldt20\Desktop\图片", "all混淆矩阵" + nowTime)
 
 
@@ -82,8 +81,8 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
                  fontdict={'fontsize': 40})
 
     plt.tight_layout()
-    plt.xlabel('True label', fontdict={'fontsize': 20})
-    plt.ylabel('Predicted label', fontdict={'fontsize': 20})
+    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
+    plt.ylabel('True label', fontdict={'fontsize': 20})
     plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
     # plt.show()
     plt.savefig(path)
