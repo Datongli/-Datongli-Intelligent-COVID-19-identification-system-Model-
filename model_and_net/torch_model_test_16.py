@@ -3,6 +3,7 @@
 resnet和tcnn
 """
 import sys
+import modeltools
 import Parallel_network, modeltools
 import datetime
 import itertools
@@ -47,109 +48,6 @@ paddy_labels = {negative: 0,
                 positive: 1}
 
 
-class PaddyDataSet(Dataset):
-    """
-    并联网络输入的数据集，使用此dataset的前提是两个文件夹下的数据命名规则相同，数据量相同
-    """
-    def __init__(self, data_dir_1, data_dir_2, transform_1=None, transform_2=None):
-        """
-        数据集
-        """
-        self.label_name = {negative: 0, positive: 1}
-        # data_info 存储所有图片路径和标签, 在DataLoader中通过index读取样本
-        self.data_info = self.get_img_info(data_dir_1)
-        self.data_dir_1 = data_dir_1
-        self.data_dir_2 = data_dir_2
-        self.transform_1 = transform_1
-        self.transform_2 = transform_2
-        self.temp = np.zeros((224, 224))
-
-    def __getitem__(self, index):
-        path_img, label = self.data_info[index]
-        # 图片的路径 path_img
-        # 取出uid
-        uid = os.path.basename(path_img)[:-4]
-        # 取出图片的类别 img_class
-        classes = os.path.basename(os.path.dirname(path_img))
-        # 得到音频的路径 path_audio
-        path_audio = os.path.join(self.data_dir_2, classes, uid + ".wav")
-        img = Image.open(path_img).convert('RGB')
-        if img.size == self.temp.shape:
-            img = img.resize((224, 224))
-        if self.transform_1 is not None:
-            img = self.transform_1(img)
-        # 进行预处理
-        audio = modeltools.preprocess_data(path_audio)
-        if self.transform_2 is not None:
-            audio = self.transform_2(audio).float()
-
-        return img, audio, label
-
-    def __len__(self):
-        return len(self.data_info)
-
-    @staticmethod
-    def get_img_info(data_dir):
-        data_info = list()
-        for root, dirs, _ in os.walk(data_dir):
-            # 遍历类别
-            for sub_dir in dirs:
-                img_names = os.listdir(os.path.join(root, sub_dir))
-                img_names = list(filter(lambda x: x.endswith('.jpg'), img_names))
-
-                # 遍历图片
-                for i in range(len(img_names)):
-                    img_name = img_names[i]
-                    path_img = os.path.join(root, sub_dir, img_name)
-                    # print(sub_dir)
-                    label = paddy_labels[sub_dir]
-                    data_info.append((path_img, int(label)))
-
-        return data_info
-
-
-def init_weights(layer):
-    """
-    参数初始化设置使用
-    :param layer:
-    :return:
-    """
-    # 如果为卷积层，使用 He initialization 方法正态分布生成值，生成随机数填充张量
-    if type(layer) == nn.Conv2d:
-        # nn.init.normal_(layer.weight, mean=0, std=0.5)
-        nn.init.kaiming_normal_(layer.weight, a=0, mode='fan_in', nonlinearity='relu')
-    # 如果为全连接层，权重使用均匀分布初始化，偏置初始化为0.1
-    elif type(layer) == nn.Linear:
-        nn.init.uniform_(layer.weight, a=-0.1, b=0.1)
-        nn.init.constant_(layer.bias, 0.05)
-
-
-def getStat(all_data):
-    '''
-    用于计算自己（图片）数据集的均值与方差
-    :param train_data: 自定义类Dataset(或ImageFolder即可)
-    :return: (mean, std)
-    '''
-    train_loader = torch.utils.data.DataLoader(
-        all_data, batch_size=1, shuffle=False, num_workers=0,
-        pin_memory=True)
-    mean = torch.zeros(3)
-    std = torch.zeros(3)
-    print(type(train_loader))
-    print(len(all_data))
-    all_num = len(all_data)
-    num = 0
-    for X, _ in train_loader:
-        num += 1
-        print("共{}个，第{}个".format(all_num, num))
-        for d in range(3):
-            mean[d] += X[:, d, :, :].mean()
-            std[d] += X[:, d, :, :].std()
-    mean.div_(len(all_data))
-    std.div_(len(all_data))
-    return list(mean.numpy()), list(std.numpy())
-
-
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
@@ -181,6 +79,9 @@ positive_num = len(os.listdir(positive_path))
 alpha = positive_num / (positive_num + negative_num)
 print("alpha:{}".format(alpha))
 
+# 计算正负样本的权重,可以传递给损失函数，用于给不平衡的数据进行加权求取损失
+pos_weight = negative_num / (positive_num + negative_num)
+neg_weight = positive_num / (positive_num + negative_num)
 
 # 显示一下文件夹的名称
 dir_path_1 = os.path.basename(filepath_train_val_1)
@@ -212,15 +113,15 @@ else:
 """
 用于分别求取两个数据集的均值和方差
 """
-# transform = transforms.Compose([transforms.ToTensor()])
-# all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
-# image_mean_1, image_std_1 = getStat(all_dataset_1)
-# print(image_mean_1, image_std_1)
+transform = transforms.Compose([transforms.ToTensor()])
+all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
+image_mean_1, image_std_1 = modeltools.getStat(all_dataset_1)
+print(image_mean_1, image_std_1)
 
 
 # logmel
-image_mean_1 = [0.327612, 0.5386462, 0.5382104]
-image_std_1 = [0.36893702, 0.39973584, 0.32598126]
+# image_mean_1 = [0.327612, 0.5386462, 0.5382104]
+# image_std_1 = [0.36893702, 0.39973584, 0.32598126]
 
 
 
@@ -228,7 +129,7 @@ image_std_1 = [0.36893702, 0.39973584, 0.32598126]
 实例化dataset对象，便于后续的迭代
 """
 # 实例化一个dataset对象，用于存储训练和验证的数据
-train_val_data = PaddyDataSet(
+train_val_data = modeltools.PaddyDataSet_model(
                                 data_dir_1=filepath_train_val_1,
                                 data_dir_2=filepath_train_val_2,
                                 transform_1=transforms.Compose([
@@ -244,7 +145,7 @@ train_val_data = PaddyDataSet(
                                 )
 
 # 实例化一个dataset对象，用于存储测试的数据
-test_data = PaddyDataSet(
+test_data = modeltools.PaddyDataSet_model(
                             data_dir_1=filepath_test_1,
                             data_dir_2=filepath_test_2,
                             transform_1=transforms.Compose([
@@ -617,6 +518,34 @@ for train_index, val_index in kf.split(train_val_data):
     plt.legend(["train", "val"], loc="lower right")
     plt.savefig(photo_folder + "\\" + net_name + "网络 model_acc_第{}折_".format(k_num) + str(nowTime) + ".jpg")
 
+    """
+    绘制ROC曲线和混淆矩阵
+    """
+    plt.figure()
+    fpr, tpr, thersholds = roc_curve(labels_epoch, pre_score)
+    roc_auc = 100 * auc(fpr, tpr)
+    plt.plot(fpr, tpr, label='V-' + str(k_num) + ' (auc = {0:.2f})'.format(roc_auc), c='tab:green', alpha=0.9)
+    plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限，以免和边缘重合，更好的观察图像的整体
+    plt.ylim([-0.05, 1.05])
+    plt.plot([0, 1], [0, 1], linestyle='--', label='chance', c='tab:green', alpha=.5)
+    plt.legend(loc='lower right', frameon=False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.gca().spines['top'].set_visible(False)
+    plt.grid(color='gray', linestyle='--', linewidth=1, alpha=.3)
+    plt.text(0, 1, 'PATIENT-LEVEL ROC', color='gray', fontsize=12)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')  # 可以使用中文，但需要导入一些库即字体
+    plt.title('ROC Curve')
+    plt.legend(loc="lower right")
+    plt.savefig(
+        photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "model_ROC_" + str(nowTime) + ".jpg")
+    plt.show()
+
+    # 绘制混淆矩阵
+    Confusion_matrix_path = photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "Confusion matrix" + str(nowTime) + ".jpg"
+    classes = ['negative', 'positive']
+    modeltools.plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix', path=Confusion_matrix_path)
+
 """
 k折交叉验证的话，在前面绘制了loss和acc
 绘制混淆矩阵以及每一折的ROC曲线并取平均，计算每一折AUC并取平均
@@ -717,52 +646,10 @@ plt.show()
 绘制混淆矩阵，并保存
 """
 Confusion_matrix_path = photo_folder + "\\" + net_name + "网络 Confusion matrix" + str(nowTime) + ".jpg"
-
-
-def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues,
-                          path=Confusion_matrix_path):
-    """
-    - cm : 计算出的混淆矩阵的值
-    - classes : 混淆矩阵中每一行每一列对应的列
-    - normalize : True:显示百分比, False:显示个数
-    """
-    if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        #         print("显示百分比：")
-        np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
-    #         print(cm)
-    #     else:
-    #         print('显示具体数字：')
-    #         print(cm)
-    plt.figure(dpi=320, figsize=(8, 8))
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title, fontdict={'fontsize': 20})
-    plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
-    plt.yticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
-    # matplotlib版本问题，如果不加下面这行代码，则绘制的混淆矩阵上下只能显示一半，有的版本的matplotlib不需要下面的代码，分别试一下即可
-    plt.ylim(len(classes) - 0.5, -0.5)
-    fmt = '.2f' if normalize else '.0f'
-    # fmt = '.2f'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
-                 color="red" if cm[i, j] > thresh else "red",
-                 fontdict={'fontsize': 40})
-
-    plt.tight_layout()
-    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
-    plt.ylabel('True label', fontdict={'fontsize': 20})
-    plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
-    # plt.show()
-    plt.savefig(path)
-
-
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
 classes = ['negative', 'positive']
-plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
+modeltools.plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix', path=Confusion_matrix_path)
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
