@@ -25,6 +25,10 @@
 重新写一下读取数据的部分，现在是会有两个大文件夹，一个是训练加验证用的数据，一个是单独的测试用的数据
 已完成
 """
+"""
+加上了加权交叉熵
+更改成每一折都会绘制ROC和混淆矩阵
+"""
 import imageio.v2 as imageio
 from torch.nn import init
 import sys
@@ -50,6 +54,7 @@ from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
 # from pytorchtools import EarlyStopping
 from tqdm import tqdm
+import modeltools
 import GhostNet
 import efficientnet
 import GhostNet_res
@@ -58,189 +63,27 @@ import Covnet_2
 import Covnet_3
 import ResNet
 
-negative = 'cat'
-positive = 'dog'
-# negative = 'negative'
-# positive = 'positive'
+# negative = 'cat'
+# positive = 'dog'
+negative = 'negative'
+positive = 'positive'
 
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 训练加验证数据集文件夹位置
-filepath_train_val = r"D:\学习\大创\data\训练数据集\data\cat_vs_dog(new)_2023-05-05-14-53-51\cat_dog_train"
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\整合（预训练数据集1：1）\预训练数据集\训练集\logMel"
 # 测试数据集文件夹位置
-filepath_test = r"D:\学习\大创\data\训练数据集\data\cat_vs_dog(new)_2023-05-05-14-53-51\cat_dog_test"
+filepath_test = r"D:\学习\大创\data\训练数据集\data\整合（预训练数据集1：1）\预训练数据集\测试集\logMel"
 
 paddy_labels = {negative: 0,
                 positive: 1}
-
-
-# 用于包装train和val数据的dataset迭代器，里面剔除了test数据
-class PaddyDataSet_train_val(Dataset):
-    def __init__(self, data_dir, transform=None):
-        """
-        数据集
-        """
-        self.label_name = {negative: 0, positive: 1}
-        # data_info 存储所有图片路径和标签, 在DataLoader中通过index读取样本
-        self.data_info = self.get_img_info(data_dir)
-        self.transform = transform
-        self.temp = np.zeros((224, 224))
-
-    def __getitem__(self, index):
-        path_img, label = self.data_info[index]
-        img = Image.open(path_img).convert('RGB')
-        # print(img.size)
-        if img.size == self.temp.shape:
-            img = img.resize((224, 224))
-            # print(img.size)
-        if self.transform is not None:
-            img = self.transform(img)
-
-        return img, label
-
-    def __len__(self):
-        return len(self.data_info)
-
-    @staticmethod
-    def get_img_info(data_dir):
-        data_info = list()
-        for root, dirs, _ in os.walk(data_dir):
-            # 遍历类别
-            for sub_dir in dirs:
-                img_names = os.listdir(os.path.join(root, sub_dir))
-                img_names = list(filter(lambda x: x.endswith('.jpg'), img_names))
-
-                # 遍历图片
-                for i in range(len(img_names)):
-                    img_name = img_names[i]
-                    path_img = os.path.join(root, sub_dir, img_name)
-                    # print(sub_dir)
-                    label = paddy_labels[sub_dir]
-                    data_info.append((path_img, int(label)))
-        return data_info
-
-
-# 用于包装test数据的dataset迭代器
-class PaddyDataSet_test(Dataset):
-    def __init__(self, data_dir, transform=None):
-        """
-        数据集
-        """
-        # data_info 存储所有图片路径和标签, 在DataLoader中通过index读取样本
-        self.test_info = self.get_img_info(data_dir)
-        self.transform = transform
-        self.temp = np.zeros((224, 224))
-
-    def __getitem__(self, index):
-        path_img, label = self.test_info[index]
-        img = Image.open(path_img).convert('RGB')
-        # print(img.size)
-        if img.size == self.temp.shape:
-            img = img.resize((224, 224))
-            # print(img.size)
-        if self.transform is not None:
-            img = self.transform(img)
-        return img, label
-
-    def __len__(self):
-        return len(self.test_info)
-
-    @staticmethod
-    def get_img_info(data_dir):
-        data_info = list()
-        for root, dirs, _ in os.walk(data_dir):
-            # 遍历类别
-            for sub_dir in dirs:
-                img_names = os.listdir(os.path.join(root, sub_dir))
-                img_names = list(filter(lambda x: x.endswith('.jpg'), img_names))
-
-                # 遍历图片
-                for i in range(len(img_names)):
-                    img_name = img_names[i]
-                    path_img = os.path.join(root, sub_dir, img_name)
-                    # print(sub_dir)
-                    label = paddy_labels[sub_dir]
-                    data_info.append((path_img, int(label)))
-        return data_info
-
-
-def init_weights(layer):
-    """
-    参数初始化设置使用
-    :param layer:
-    :return:
-    """
-    # 如果为卷积层，使用 He initialization 方法正态分布生成值，生成随机数填充张量
-    if type(layer) == nn.Conv2d:
-        # nn.init.normal_(layer.weight, mean=0, std=1)
-        nn.init.kaiming_normal_(layer.weight, a=0, mode='fan_in', nonlinearity='relu')
-    # 如果为全连接层，权重使用均匀分布初始化，偏置初始化为0.1
-    elif type(layer) == nn.Linear:
-        nn.init.uniform_(layer.weight, a=-0.1, b=0.1)
-        nn.init.constant_(layer.bias, 0.1)
-
-
-class Focal_Loss(torch.nn.Module):
-    """
-    二分类Focal Loss
-    """
-
-    def __init__(self, alpha=0.25, gamma=1):
-        super(Focal_Loss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-
-    def forward(self, preds, labels):
-        """
-        preds:sigmoid的输出结果
-        labels：标签
-        """
-        eps = 1e-7
-        loss = []
-        for i in range(len(labels)):
-            loss_1 = -1 * (1 - self.alpha) * torch.pow((1 - preds[i][1]), self.gamma) * torch.log(preds[i][1] + eps) * \
-                     labels[i]
-            loss_0 = -1 * self.alpha * torch.pow(preds[i][1], self.gamma) * torch.log(1 - preds[i][1] + eps) * (
-                    1 - labels[i])
-            loss.append(loss_0 + loss_1)
-        long = len(loss)
-        loss = sum(loss)
-        loss = torch.as_tensor(loss / long)
-        # return torch.mean(loss)
-        return loss
-
-
-def getStat(all_data):
-    '''
-    用于计算自己（图片）数据集的均值与方差
-    :param train_data: 自定义类Dataset(或ImageFolder即可)
-    :return: (mean, std)
-    '''
-    train_loader = torch.utils.data.DataLoader(
-        all_data, batch_size=1, shuffle=False, num_workers=0,
-        pin_memory=True)
-    mean = torch.zeros(3)
-    std = torch.zeros(3)
-    print(type(train_loader))
-    print(len(all_data))
-    all_num = len(all_data)
-    num = 0
-    for X, _ in train_loader:
-        num += 1
-        print("共{}个，第{}个".format(all_num, num))
-        for d in range(3):
-            mean[d] += X[:, d, :, :].mean()
-            std[d] += X[:, d, :, :].std()
-    mean.div_(len(all_data))
-    std.div_(len(all_data))
-    return list(mean.numpy()), list(std.numpy())
 
 
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
 batch_size = 32  # 每个step训练batch_size张图片
-epochs = 64  # 共训练epochs次
+epochs = 3  # 共训练epochs次
 k = 5  # k折交叉验证
 # 这两个是用于covnet的dropout参数
 dropout_num_1 = 0.4
@@ -272,27 +115,32 @@ positive_num = len(os.listdir(positive_path))
 alpha = positive_num / (positive_num + negative_num)
 print("alpha:{}".format(alpha))
 
+# 计算正负样本的权重,可以传递给损失函数，用于给不平衡的数据进行加权求取损失
+pos_weight = negative_num / (positive_num + negative_num)
+neg_weight = positive_num / (positive_num + negative_num)
 
 # 显示一下文件夹的名称
 dir_path = os.path.basename(filepath_train_val)
+for_path = os.path.basename(os.path.dirname(os.path.dirname(filepath_train_val)))
 print(dir_path)
+print(for_path)
 # 创建权重的文件夹
-savepath = os.path.join(work_path, 'pth', dir_path)
+savepath = os.path.join(work_path, 'pth', for_path, dir_path)
 cd = os.path.exists(savepath)
 if cd:
     print("权重保存文件夹已存在")
 else:
     print("创建权重保存文件夹")
-    os.mkdir(savepath)
+    os.makedirs(savepath)
 print(savepath)
 # 判断保存图片文件夹是否存在
-photo_folder = os.path.join(work_path, 'photo', dir_path)
+photo_folder = os.path.join(work_path, 'photo', for_path, dir_path)
 cd = os.path.exists(photo_folder)
 if cd:
     print("图片保存文件夹已存在")
 else:
     print("创建图片保存文件夹")
-    os.mkdir(photo_folder)
+    os.makedirs(photo_folder)
 
 # 计算需要多少步，取整
 step_num = int(all_photo_num * 0.8 / batch_size)
@@ -308,15 +156,15 @@ else:
 # （2）构造数据集
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
-# transform = transforms.Compose([transforms.ToTensor()])
-# all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
-# image_mean, image_std = getStat(all_dataset)
-# print("image_mean:{}".format(image_mean))
-# print("image_std:{}".format(image_std))
+transform = transforms.Compose([transforms.ToTensor()])
+all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
+image_mean, image_std = modeltools.getStat(all_dataset)
+print("image_mean:{}".format(image_mean))
+print("image_std:{}".format(image_std))
 
-# logmel 1:1
-# image_mean = [0.327612, 0.5386462, 0.5382104]
-# image_std = [0.36893702, 0.39973584, 0.32598126]
+# logmel
+# image_mean = [0.3573493, 0.60304385, 0.5451362]
+# image_std = [0.37020192, 0.37281695, 0.3404519]
 
 # TFDF logmel 1:1
 # image_mean = [0.4685931, 0.9386316, 0.5017901]
@@ -335,36 +183,35 @@ else:
 # image_std = [0.21205482, 0.16801828, 0.20811893]
 
 # cat_dog
-image_mean = [0.48807245, 0.45488325, 0.41675377]
-image_std = [0.2293499, 0.22479817, 0.22514497]
+# image_mean = [0.48807245, 0.45488325, 0.41675377]
+# image_std = [0.2293499, 0.22479817, 0.22514497]
 
 # 读取数据集后再进行划分
 data_dir = filepath_train_val
 # 实例化一个对象，用于承接train和val的数据的迭代器
-train_val_data = PaddyDataSet_train_val(data_dir=filepath_train_val,
-                                        transform=transforms.Compose([
-                                            # 将输入图像大小调整为224*224
-                                            transforms.Resize((224, 224)),
-                                            # # 数据增强，随机水平翻转
-                                            # transforms.RandomHorizontalFlip(),
-                                            # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
-                                            transforms.ToTensor(),
-                                            transforms.Normalize(mean=image_mean, std=image_std)
-                                        ]))
+train_val_data = modeltools.PaddyDataSet_train_val(data_dir=filepath_train_val,
+                                                   transform=transforms.Compose([
+                                                       # 将输入图像大小调整为224*224
+                                                       transforms.Resize((224, 224)),
+                                                       # # 数据增强，随机水平翻转
+                                                       # transforms.RandomHorizontalFlip(),
+                                                       # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
+                                                       transforms.ToTensor(),
+                                                       transforms.Normalize(mean=image_mean, std=image_std)
+                                                   ]))
 # 实例化一个承接test数据的迭代器
-test_data = PaddyDataSet_test(data_dir=filepath_test,
-                              transform=transforms.Compose([
-                                  # 将输入图像大小调整为224*224
-                                  transforms.Resize((224, 224)),
-                                  # # 数据增强，随机水平翻转
-                                  # transforms.RandomHorizontalFlip(),
-                                  # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
-                                  transforms.ToTensor(),
-                                  transforms.Normalize(mean=image_mean, std=image_std)
-                              ]))
+test_data = modeltools.PaddyDataSet_test(data_dir=filepath_test,
+                                         transform=transforms.Compose([
+                                             # 将输入图像大小调整为224*224
+                                             transforms.Resize((224, 224)),
+                                             # # 数据增强，随机水平翻转
+                                             # transforms.RandomHorizontalFlip(),
+                                             # 数据变成tensor类型，像素值归一化，调整维度[h,w,c]==>[c,h,w]
+                                             transforms.ToTensor(),
+                                             transforms.Normalize(mean=image_mean, std=image_std)
+                                         ]))
 
 test_index = [i for i in range(len(test_data))]
-
 
 # # 先划分成 5份
 kf = KFold(n_splits=k, shuffle=True, random_state=34)
@@ -428,11 +275,12 @@ for train_index, val_index in kf.split(train_val_data):
     """
     查一查reduction参数的含义
     """
+    # loss_function = nn.CrossEntropyLoss(weight=torch.tensor([neg_weight, pos_weight]).to(device))
     loss_function = nn.CrossEntropyLoss()
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=4)
 
     # 写一个txt文件用于保存超参数
@@ -482,7 +330,6 @@ for train_index, val_index in kf.split(train_val_data):
         epoch_acc = 0.0
         num_0 = 0
 
-
         # 每个step训练一个batch
         # enumerate：遍历，返回索引和元素
         # for step, data in tqdm(enumerate(train_loader), desc="train",unit='photo'):
@@ -493,8 +340,6 @@ for train_index, val_index in kf.split(train_val_data):
 
             # data中包含图像及其对应的标签
             images, labels = data
-
-
 
             """
             尝试将数组反转成图片
@@ -552,7 +397,7 @@ for train_index, val_index in kf.split(train_val_data):
             #     print(np.shape(param.data))
             #     print(np.shape(param.grad))
 
-            file.write("第{}折, step:{} loss:{} acc:{}\n".format(k_num,  step + 1, loss, running_acc / batch_size))
+            file.write("第{}折, step:{} loss:{} acc:{}\n".format(k_num, step + 1, loss, running_acc / batch_size))
 
         # -------------------------------------------------- #
         # （5）网络验证
@@ -651,7 +496,6 @@ for train_index, val_index in kf.split(train_val_data):
                 savename = savepath + '\\model_' + dir_path + "最好的权重" + net_name + "网络" + '.pth'
                 # 保存当前权重
                 torch.save(net.state_dict(), savename, _use_new_zipfile_serialization=False)
-
 
         # 学习率更新：根据回带的次数来更新学习率
         scheduler.step()
@@ -752,6 +596,36 @@ for train_index, val_index in kf.split(train_val_data):
     plt.legend(["train", "val"], loc="lower right")
     plt.savefig(photo_folder + "\\" + net_name + "网络 model_acc_第{}折_".format(k_num) + str(nowTime) + ".jpg")
 
+    """
+    绘制ROC曲线和混淆矩阵
+    """
+    plt.figure()
+    fpr, tpr, thersholds = roc_curve(labels_epoch, pre_score)
+    roc_auc = 100 * auc(fpr, tpr)
+    plt.plot(fpr, tpr, label='V-' + str(k_num) + ' (auc = {0:.2f})'.format(roc_auc), c='tab:green', alpha=0.9)
+    plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限，以免和边缘重合，更好的观察图像的整体
+    plt.ylim([-0.05, 1.05])
+    plt.plot([0, 1], [0, 1], linestyle='--', label='chance', c='tab:green', alpha=.5)
+    plt.legend(loc='lower right', frameon=False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.gca().spines['top'].set_visible(False)
+    plt.grid(color='gray', linestyle='--', linewidth=1, alpha=.3)
+    plt.text(0, 1, 'PATIENT-LEVEL ROC', color='gray', fontsize=12)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')  # 可以使用中文，但需要导入一些库即字体
+    plt.title('ROC Curve')
+    plt.legend(loc="lower right")
+    plt.savefig(
+        photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "model_ROC_" + str(nowTime) + ".jpg")
+    plt.show()
+
+    # 绘制混淆矩阵
+    Confusion_matrix_path = photo_folder + "\\" + net_name + "网络" + "第{}折_".format(
+        k_num) + "Confusion matrix" + str(nowTime) + ".jpg"
+    classes = ['negative', 'positive']
+    modeltools.plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix',
+                          path=Confusion_matrix_path)
+
 """
 k折交叉验证的话，在前面绘制了loss和acc
 绘制混淆矩阵以及每一折的ROC曲线并取平均，计算每一折AUC并取平均
@@ -851,53 +725,11 @@ plt.show()
 绘制混淆矩阵，并保存
 """
 Confusion_matrix_path = photo_folder + "\\" + net_name + "网络 Confusion matrix" + str(nowTime) + ".jpg"
-
-
-# 绘制混淆矩阵
-def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues,
-                          path=Confusion_matrix_path):
-    """
-    - cm : 计算出的混淆矩阵的值
-    - classes : 混淆矩阵中每一行每一列对应的列
-    - normalize : True:显示百分比, False:显示个数
-    """
-    if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        #         print("显示百分比：")
-        np.set_printoptions(formatter={'float': '{: 0.2f}'.format})
-    #         print(cm)
-    #     else:
-    #         print('显示具体数字：')
-    #         print(cm)
-    plt.figure(dpi=320, figsize=(8, 8))
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title, fontdict={'fontsize': 20})
-    plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
-    plt.yticks(tick_marks, classes, rotation=45, fontdict={'fontsize': 10})
-    # matplotlib版本问题，如果不加下面这行代码，则绘制的混淆矩阵上下只能显示一半，有的版本的matplotlib不需要下面的代码，分别试一下即可
-    plt.ylim(len(classes) - 0.5, -0.5)
-    fmt = '.2f' if normalize else '.0f'
-    # fmt = '.2f'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center",
-                 color="red" if cm[i, j] > thresh else "red",
-                 fontdict={'fontsize': 40})
-
-    plt.tight_layout()
-    plt.xlabel('Predicted label', fontdict={'fontsize': 20})
-    plt.ylabel('True label', fontdict={'fontsize': 20})
-    plt.subplots_adjust(left=0.12, right=0.95, bottom=0.2, top=0.9)
-    # plt.show()
-    plt.savefig(path)
-
-
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
 classes = ['negative', 'positive']
-plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
+modeltools.plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix',
+                      path=Confusion_matrix_path)
 
 # # 第二种情况：显示数字
 # plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix')
