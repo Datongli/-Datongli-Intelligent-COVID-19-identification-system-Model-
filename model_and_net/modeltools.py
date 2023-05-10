@@ -155,7 +155,7 @@ class PaddyDataSet_model(Dataset):
         if self.transform_1 is not None:
             img = self.transform_1(img)
         # 进行预处理
-        audio = modeltools.preprocess_data(path_audio)
+        audio = preprocess_data(path_audio)
         if self.transform_2 is not None:
             audio = self.transform_2(audio).float()
 
