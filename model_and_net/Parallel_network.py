@@ -39,11 +39,13 @@ class parallel_net(nn.Module):
         # 部分一用于承接时频差分特性，暂定使用resnet网络
         # include_top=False 即代表不适用最后的全连接层，还是一个4维张量的输出形式
         self.part_1 = ResNet.resnet18(num_classes=2, include_top=True, dropout=self.dropout)
-        self.part_1.load_state_dict(torch.load(self.pth_1, map_location=device))
+        if self.pth_1 is not None:
+            self.part_1.load_state_dict(torch.load(self.pth_1, map_location=device))
         # self.part_1 = Covnet_3.Covnet(drop_1=0.2, drop_2=0.2)
         # 部分二用于承接对数梅尔倒谱图，暂定使用resnet网络
         self.part_2 = ResNet.resnet18(num_classes=2, include_top=True, dropout=self.dropout)
-        self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
+        if self.pth_2 is not None:
+            self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
         # self.part_2 = Covnet_3.Covnet(drop_1=0.2, drop_2=0.2)
         # self.part_2 = GhostNet.GhostNet(num_classes=256, dropout=0.2)
         # self.bn = nn.BatchNorm1d(256*2)
@@ -179,9 +181,11 @@ class parallel_covnet(nn.Module):
         return x
 
 class parallel_model(nn.Module):
-    def __init__(self, num_classes=2, dropout1=0.1, dropout2=0.2, include_top=True):
+    def __init__(self, num_classes=2, dropout1=0.1, dropout2=0.2, include_top=True, pth_1=None, pth_2=None):
         super(parallel_model, self).__init__()
         # 属性分配
+        self.pth_1 = pth_1
+        self.pth_2 = pth_2
         self.dropout1 = dropout1
         self.dropout2 = dropout2
         self.include_top = include_top
@@ -192,10 +196,14 @@ class parallel_model(nn.Module):
         # 部分一用于承接时频差分特性，暂定使用resnet网络
         # include_top=False 即代表不适用最后的全连接层，还是一个4维张量的输出形式
         self.part_1 = ResNet.resnet18(num_classes=self.part_1_out, include_top=True, dropout=self.dropout1)
+        if self.pth_1 is not None:
+            self.part_1.load_state_dict(torch.load(self.pth_1, map_location=device))
         # 部分二用于承接对数梅尔倒谱图，暂定使用TCNN网络
         # self.part_2 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
         # self.part_1 = Covnet_3.Covnet(drop_1=self.dropout_1, drop_2=self.dropout_2)
         self.part_2 = TCNN.TCNN(out_num=self.part_2_out, dropout=self.dropout2)
+        if self.pth_2 is not None:
+            self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
 
         # 全连接分类
         self.fc = nn.Linear(self.part_1_out + self.part_2_out, num_classes)
