@@ -261,6 +261,10 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
+        """
+        全连接层加在dropout之后的
+        证实了，这个是对的
+        """
         # 分类层
         if self.include_top:
             # 全局平均池化
@@ -273,7 +277,7 @@ class ResNet(nn.Module):
             # 全连接分类
             x = self.fc(x)
             # 是不是应该加一层softmax
-            x = self.softmax(x)
+            # x = self.softmax(x)
 
         return x
 
