@@ -13,6 +13,7 @@ import ResNet
 import Covnet_3
 import GhostNet
 import TCNN
+import TCNN2
 
 # 获取GPU设备
 if torch.cuda.is_available():  # 如果有GPU就用，没有就用CPU
@@ -180,6 +181,7 @@ class parallel_covnet(nn.Module):
             # x = self.softmax(x)
         return x
 
+
 class parallel_model(nn.Module):
     def __init__(self, num_classes=2, dropout1=0.1, dropout2=0.2, include_top=True, pth_1=None, pth_2=None):
         super(parallel_model, self).__init__()
@@ -201,17 +203,21 @@ class parallel_model(nn.Module):
         # 部分二用于承接对数梅尔倒谱图，暂定使用TCNN网络
         # self.part_2 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
         # self.part_1 = Covnet_3.Covnet(drop_1=self.dropout_1, drop_2=self.dropout_2)
-        self.part_2 = TCNN.TCNN(out_num=self.part_2_out, dropout=self.dropout2)
+        self.part_2 = TCNN2.TCNN2(out=self.part_2_out, dropout=self.dropout2)
         if self.pth_2 is not None:
             self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
 
         # 全连接分类
-        self.fc = nn.Linear(self.part_1_out + self.part_2_out, num_classes)
+        self.fc = nn.Linear(self.part_1_out + self.part_2_out, 32)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc_1 = nn.Linear(32, 64)
+        self.fc_2 = nn.Linear(64, num_classes)
+        self.softmax = nn.Softmax(dim=1)
 
         # 卷积层权重初始化
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         nn.init.kaiming_normal_(m.weight, mode='fan_out')
 
     # 前向传播
     def forward(self, data_1, data_2):
@@ -226,6 +232,10 @@ class parallel_model(nn.Module):
             # x = torch.flatten(x, 1)
             # 全连接分类
             x = self.fc(x)
+            x = self.relu(x)
+            x = self.fc_1(x)
+            x = self.relu(x)
+            x = self.fc_2(x)
             x = self.softmax(x)
 
         return x
