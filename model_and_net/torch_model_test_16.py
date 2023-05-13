@@ -37,12 +37,12 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 数据集文件夹位置
-filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\训练集\logMel"
-filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\测试集\logMel"
-filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\音频\音频训练集"
-filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Track1+CoughVid 谱图合集\测试集&训练集(2s)\音频\音频测试集"
-pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\track1+coughvid(2s)_logmel_resnet18.pth"
-pth_path_2 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\track1+coughvid(2s)_TFDF_resnet18.pth"
+filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\训练集\logMel"
+filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\测试集\logMel"
+filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\训练集"
+filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\测试集"
+pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_logMel最好的权重ResNet18.pth"
+pth_path_2 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_tcnn.pth"
 
 paddy_labels = {negative: 0,
                 positive: 1}
@@ -54,9 +54,9 @@ paddy_labels = {negative: 0,
 batch_size = 16  # 每个step训练batch_size张图片
 epochs = 32  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_resnet = 0.4
-dropout_tcnn = 0.4
-learning_rate = 1e-5
+dropout_resnet = 0.2
+dropout_tcnn = 0.2
+learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
@@ -84,8 +84,8 @@ pos_weight = negative_num / (positive_num + negative_num)
 neg_weight = positive_num / (positive_num + negative_num)
 
 # 显示一下文件夹的名称
-dir_path_1 = os.path.basename(filepath_train_val_1)
-dir_path_2 = os.path.basename(filepath_train_val_2)
+dir_path_1 = os.path.basename(os.path.dirname(os.path.dirname(filepath_train_val_1)))
+dir_path_2 = os.path.basename(os.path.dirname(filepath_train_val_2))
 dir_path = dir_path_1 + "+" + dir_path_2 + ' 并联网络'
 print(dir_path)
 # 创建权重的文件夹
@@ -113,15 +113,15 @@ else:
 """
 用于分别求取两个数据集的均值和方差
 """
-transform = transforms.Compose([transforms.ToTensor()])
-all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
-image_mean_1, image_std_1 = modeltools.getStat(all_dataset_1)
-print(image_mean_1, image_std_1)
+# transform = transforms.Compose([transforms.ToTensor()])
+# all_dataset_1 = ImageFolder(root=filepath_train_val_1 + '/', transform=transform)
+# image_mean_1, image_std_1 = modeltools.getStat(all_dataset_1)
+# print(image_mean_1, image_std_1)
 
 
 # logmel
-# image_mean_1 = [0.327612, 0.5386462, 0.5382104]
-# image_std_1 = [0.36893702, 0.39973584, 0.32598126]
+image_mean_1 = [0.37977567, 0.57874584, 0.49764398]
+image_std_1 = [0.3580183, 0.3747361, 0.31751427]
 
 
 
@@ -202,7 +202,7 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=pth_path_1, pth_2=None)
+    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=pth_path_1, pth_2=pth_path_2)
     # net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
@@ -223,12 +223,13 @@ for train_index, val_index in kf.split(train_val_data):
     # loss_function = Focal_Loss(alpha=alpha)
     # 将模型搬运到GPU上
     net.to(device)
-    loss_function = nn.CrossEntropyLoss()
+    # loss_function = nn.CrossEntropyLoss()
+    # loss_function = modeltools.FocalLoss(gamma=0.5, alpha=alpha)
+    loss_function = nn.CrossEntropyLoss(weight=torch.tensor([neg_weight, pos_weight]).to(device))
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
-    # optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -373,6 +374,8 @@ for train_index, val_index in kf.split(train_val_data):
                 acc += (predict_y == val_labels.to(device)).sum().item()
 
                 val_setp += 1
+
+                print("label:{}, predict:{}".format(val_labels, predict_y))
 
             # 计算所有图片的平均准确率
             acc_val = acc / val_num
