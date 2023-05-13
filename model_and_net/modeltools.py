@@ -1,39 +1,22 @@
 """
 该文件用于封装一些常用的模型训练函数，方便以后的调用
 """
-import imageio.v2 as imageio
-from torch.nn import init
-from torch.optim.lr_scheduler import CosineAnnealingLR
 import datetime
 import itertools
 import os
+import torch.nn.functional as F
 import soundfile as sf
 import librosa
-import random
-# import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-# PaddyDataSet
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torchvision.transforms as transforms
-from torchvision import models
 from PIL import Image
-from sklearn.metrics import roc_curve, auc
-from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
-# from pytorchtools import EarlyStopping
-from tqdm import tqdm
-import GhostNet
-import efficientnet
-import GhostNet_res
-import Covnet
-import Covnet_2
-import Covnet_3
-import ResNet
+
 
 negative = 'negative'
 positive = 'positive'
@@ -639,6 +622,42 @@ def preprocess_data(audio_file_path):
     data = np.array(data)
 
     return data
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2, alpha=None, size_average=True):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        if isinstance(alpha, (float, int)):
+            self.alpha = torch.Tensor([alpha, 1 - alpha]) #适用于二分类
+        if isinstance(alpha, list):
+            self.alpha = torch.Tensor(alpha) #适用于多分类
+        self.size_average = size_average
+
+    def forward(self, input, target):
+        if input.dim() > 2:
+            input = input.view(input.size(0), input.size(1), -1)  # N,C,H,W => N,C,H*W
+            input = input.transpose(1, 2)                          # N,C,H*W => N,H*W,C
+            input = input.contiguous().view(-1, input.size(2))     # N,H*W,C => N*H*W,C
+        target = target.view(-1, 1)
+
+        logpt = F.log_softmax(input, dim=1)
+        logpt = logpt.gather(1, target)
+        logpt = logpt.view(-1)
+        pt = logpt.data.exp()
+
+        if self.alpha is not None:
+            if self.alpha.type() != input.data.type():
+                self.alpha = self.alpha.type_as(input.data)
+            at = self.alpha.gather(0, target.data.view(-1))
+            logpt = logpt * at
+
+        loss = -1 * (1 - pt) ** self.gamma * logpt
+        if self.size_average:
+            return loss.mean()
+        else:
+            return loss.sum()
 
 
 def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues,
