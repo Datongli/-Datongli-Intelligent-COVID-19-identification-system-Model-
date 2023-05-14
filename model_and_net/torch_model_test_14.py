@@ -71,9 +71,10 @@ positive = 'positive'
 # 工作目录
 work_path = r"D:\学习\大创\data\训练数据集\model"
 # 训练加验证数据集文件夹位置
-filepath_train_val = r"D:\学习\大创\data\训练数据集\data\整合（预训练数据集1：1）\预训练数据集\训练集\logMel"
+filepath_train_val = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\训练集\logMel"
 # 测试数据集文件夹位置
-filepath_test = r"D:\学习\大创\data\训练数据集\data\整合（预训练数据集1：1）\预训练数据集\测试集\logMel"
+filepath_test = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\测试集\logMel"
+pre_pth = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_logMel最好的权重ResNet18.pth"
 
 paddy_labels = {negative: 0,
                 positive: 1}
@@ -82,20 +83,20 @@ paddy_labels = {negative: 0,
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 32  # 每个step训练batch_size张图片
-epochs = 3  # 共训练epochs次
+batch_size = 16  # 每个step训练batch_size张图片
+epochs = 32  # 共训练epochs次
 k = 5  # k折交叉验证
 # 这两个是用于covnet的dropout参数
 dropout_num_1 = 0.4
 dropout_num_2 = 0.5
 # 这个是用于resnet的dropout参数
-resnet_dropout = 0.2
+resnet_dropout = 0.5
 # 学习率
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.01
+wd = 0.2
 print("wd:{}".format(wd))
 # wd = None
 # stop_epoch: 早停的批量数
@@ -156,15 +157,15 @@ else:
 # （2）构造数据集
 # -------------------------------------------------- #
 # 计算数据集的均值与方差
-transform = transforms.Compose([transforms.ToTensor()])
-all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
-image_mean, image_std = modeltools.getStat(all_dataset)
-print("image_mean:{}".format(image_mean))
-print("image_std:{}".format(image_std))
+# transform = transforms.Compose([transforms.ToTensor()])
+# all_dataset = ImageFolder(root=filepath_train_val + '/', transform=transform)
+# image_mean, image_std = modeltools.getStat(all_dataset)
+# print("image_mean:{}".format(image_mean))
+# print("image_std:{}".format(image_std))
 
 # logmel
-# image_mean = [0.3573493, 0.60304385, 0.5451362]
-# image_std = [0.37020192, 0.37281695, 0.3404519]
+image_mean = [0.3573493, 0.60304385, 0.5451362]
+image_std = [0.37020192, 0.37281695, 0.3404519]
 
 # TFDF logmel 1:1
 # image_mean = [0.4685931, 0.9386316, 0.5017901]
@@ -246,6 +247,8 @@ for train_index, val_index in kf.split(train_val_data):
     """
     # # 2分类层
     net = ResNet.resnet18(num_classes=2, include_top=True, dropout=resnet_dropout)
+    # 加载预训练的权重
+    net.load_state_dict(torch.load(pre_pth, map_location=device))
     # net = models.resnet18(weights=None)
     # num_ftrs = net.fc.in_features
     # net.fc = nn.Linear(num_ftrs, 2)
@@ -277,6 +280,7 @@ for train_index, val_index in kf.split(train_val_data):
     """
     # loss_function = nn.CrossEntropyLoss(weight=torch.tensor([neg_weight, pos_weight]).to(device))
     loss_function = nn.CrossEntropyLoss()
+    # loss_function = modeltools.FocalLoss(gamma=0.5, alpha=alpha)
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
     # optimizer = optim.Adam(net.parameters(), lr=learning_rate)
