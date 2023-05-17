@@ -41,8 +41,8 @@ filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（�
 filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\测试集\logMel"
 filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\训练集"
 filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\测试集"
-pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_logMel最好的权重ResNet18.pth"
-pth_path_2 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_tcnn.pth"
+pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\track1+coughvid(2s)_logmel_resnet18.pth"
+pth_path_2 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_TCNN最好的权重.pth"
 
 paddy_labels = {negative: 0,
                 positive: 1}
@@ -51,11 +51,11 @@ paddy_labels = {negative: 0,
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 16  # 每个step训练batch_size张图片
-epochs = 32  # 共训练epochs次
+batch_size = 32  # 每个step训练batch_size张图片
+epochs = 2  # 共训练epochs次
 k = 5  # k折交叉验证
 dropout_resnet = 0.2
-dropout_tcnn = 0.2
+dropout_tcnn = 0.3
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
@@ -202,7 +202,7 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=pth_path_1, pth_2=pth_path_2)
+    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=None, pth_2=None)
     # net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
@@ -526,8 +526,8 @@ for train_index, val_index in kf.split(train_val_data):
     """
     plt.figure()
     fpr, tpr, thersholds = roc_curve(labels_epoch, pre_score)
-    roc_auc = 100 * auc(fpr, tpr)
-    plt.plot(fpr, tpr, label='V-' + str(k_num) + ' (auc = {0:.2f})'.format(roc_auc), c='tab:green', alpha=0.9)
+    roc_auc = auc(fpr, tpr)
+    plt.plot(fpr, tpr, label='V-' + str(k_num) + ' (auc = {0:.4f})'.format(roc_auc), c='tab:green', alpha=0.9)
     plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限，以免和边缘重合，更好的观察图像的整体
     plt.ylim([-0.05, 1.05])
     plt.plot([0, 1], [0, 1], linestyle='--', label='chance', c='tab:green', alpha=.5)
@@ -570,9 +570,9 @@ for i in range(k):
     avg_y.append(sorted(random.sample(list(tpr), len(list(tpr)))))
     roc_auc1 = auc(fpr, tpr)
 
-    roc_auc = roc_auc1 * 100
+    roc_auc = roc_auc1
     sum = sum + roc_auc
-    plt.plot(fpr, tpr, label='V-' + str(i + 1) + ' (auc = {0:.2f})'.format(roc_auc), c=clr_1, alpha=0.2)
+    plt.plot(fpr, tpr, label='V-' + str(i + 1) + ' (auc = {0:.4f})'.format(roc_auc), c=clr_1, alpha=0.2)
 
 data_x = np.array(avg_x, dtype=object)
 data_y = np.array(avg_y, dtype=object)
@@ -628,7 +628,7 @@ for i in range(data_y_num):
     a = a / k
     data_y_plt.append(a)
 
-plt.plot(data_x_plt, data_y_plt, label='AVG (auc = {0:.2f})'.format(avg), c=clr_2, alpha=1, linewidth=2)
+plt.plot(data_x_plt, data_y_plt, label='AVG (auc = {0:.4f})'.format(avg), c=clr_2, alpha=1, linewidth=2)
 plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限，以免和边缘重合，更好的观察图像的整体
 plt.ylim([-0.05, 1.05])
 plt.plot([0, 1], [0, 1], linestyle='--', label='chance', c=clr_3, alpha=.5)
