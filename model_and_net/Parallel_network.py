@@ -14,6 +14,7 @@ import Covnet_3
 import GhostNet
 import TCNN
 import TCNN2
+import TCNN4
 
 # 获取GPU设备
 if torch.cuda.is_available():  # 如果有GPU就用，没有就用CPU
@@ -197,13 +198,13 @@ class parallel_model(nn.Module):
 
         # 部分一用于承接时频差分特性，暂定使用resnet网络
         # include_top=False 即代表不适用最后的全连接层，还是一个4维张量的输出形式
-        self.part_1 = ResNet.resnet18(num_classes=self.part_1_out, include_top=True, dropout=self.dropout1)
+        self.part_1 = ResNet.resnet34(num_classes=self.part_1_out, include_top=True, dropout=self.dropout1)
         if self.pth_1 is not None:
             self.part_1.load_state_dict(torch.load(self.pth_1, map_location=device))
         # 部分二用于承接对数梅尔倒谱图，暂定使用TCNN网络
         # self.part_2 = ResNet.resnet18(num_classes=32, include_top=False, dropout=self.dropout)
         # self.part_1 = Covnet_3.Covnet(drop_1=self.dropout_1, drop_2=self.dropout_2)
-        self.part_2 = TCNN2.TCNN2(out=self.part_2_out, dropout=self.dropout2)
+        self.part_2 = TCNN4.TCNN4()
         if self.pth_2 is not None:
             self.part_2.load_state_dict(torch.load(self.pth_2, map_location=device))
 
