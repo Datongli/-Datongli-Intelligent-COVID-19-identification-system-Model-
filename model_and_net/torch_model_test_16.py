@@ -2,6 +2,9 @@
 此文件用于两种不同网络的并联输入
 resnet和tcnn
 """
+"""
+现在混淆矩阵和ROC曲线统一用svg格式保存
+"""
 import sys
 import modeltools
 import Parallel_network, modeltools
@@ -41,7 +44,7 @@ filepath_train_val_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（�
 filepath_test_1 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\Coswara（原始+增强）谱图\测试集\logMel"
 filepath_train_val_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\训练集"
 filepath_test_2 = r"D:\学习\大创\data\训练数据集\data\Coswara（原始+增强）\音频\测试集"
-pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\track1+coughvid(2s)_logmel_resnet18.pth"
+pth_path_1 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_logMel最好的权重ResNet34.pth"
 pth_path_2 = r"C:\Users\ldt20\Desktop\训练权重保存\23.5.4后的\预训练上_TCNN最好的权重.pth"
 
 paddy_labels = {negative: 0,
@@ -51,16 +54,16 @@ paddy_labels = {negative: 0,
 # -------------------------------------------------- #
 # （0）参数设置
 # -------------------------------------------------- #
-batch_size = 32  # 每个step训练batch_size张图片
-epochs = 2  # 共训练epochs次
+batch_size = 16  # 每个step训练batch_size张图片
+epochs = 32  # 共训练epochs次
 k = 5  # k折交叉验证
-dropout_resnet = 0.2
-dropout_tcnn = 0.3
+dropout_resnet = 0.1
+dropout_tcnn = 0.2
 learning_rate = 1e-4
 pre_score_k = []
 labels_k = []
 # wd：正则化惩罚的参数
-wd = 0.01
+wd = 0.04
 # wd = None
 # stop_epoch: 早停的批量数
 stop_epoch = 10
@@ -202,7 +205,7 @@ for train_index, val_index in kf.split(train_val_data):
     每一折都要实例化新的模型，不然模型会学到测试集的东西
     """
     # net = ResNet.resnet18(num_classes=2, include_top=True)
-    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=None, pth_2=None)
+    net = Parallel_network.parallel_model(num_classes=2, dropout1=dropout_resnet, dropout2=dropout_tcnn, include_top=True, pth_1=pth_path_1, pth_2=pth_path_2)
     # net = Parallel_network.parallel_covnet(num_classes=2, dropout_1=dropout_num_1, dropout_2=dropout_num_2)
     # net = Covnet_2.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
     # net = Covnet.Covnet(drop_1=dropout_num_1, drop_2=dropout_num_2)
@@ -228,8 +231,8 @@ for train_index, val_index in kf.split(train_val_data):
     loss_function = nn.CrossEntropyLoss(weight=torch.tensor([neg_weight, pos_weight]).to(device))
     # optimizer = optim.SGD(net.parameters(), lr=learning_rate)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=wd)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=8)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=16, gamma=0.1)
 
     # 写一个txt文件用于保存超参数
     file_name = r"{}\{}网络 {}.txt".format(photo_folder, net_name, nowTime)
@@ -499,7 +502,7 @@ for train_index, val_index in kf.split(train_val_data):
 
     # 每一折验证的时候，都绘制loss和acc曲线
     # 加时间戳
-    plt.figure()
+    plt.figure(dpi=320)
     plt.plot(train_loss)
     plt.plot(val_loss)
     plt.title("model loss")
@@ -511,7 +514,7 @@ for train_index, val_index in kf.split(train_val_data):
     # plt.show()
     # plt.xlim((0,50))
     # plt.ylim((0,1))
-    plt.figure()
+    plt.figure(dpi=320)
     plt.plot(train_acc)
     plt.plot(val_acc)
     plt.title("model acc")
@@ -524,7 +527,7 @@ for train_index, val_index in kf.split(train_val_data):
     """
     绘制ROC曲线和混淆矩阵
     """
-    plt.figure()
+    plt.figure(dpi=320)
     fpr, tpr, thersholds = roc_curve(labels_epoch, pre_score)
     roc_auc = auc(fpr, tpr)
     plt.plot(fpr, tpr, label='V-' + str(k_num) + ' (auc = {0:.4f})'.format(roc_auc), c='tab:green', alpha=0.9)
@@ -540,12 +543,11 @@ for train_index, val_index in kf.split(train_val_data):
     plt.ylabel('True Positive Rate')  # 可以使用中文，但需要导入一些库即字体
     plt.title('ROC Curve')
     plt.legend(loc="lower right")
-    plt.savefig(
-        photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "model_ROC_" + str(nowTime) + ".jpg")
+    plt.savefig(photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "model_ROC_" + str(nowTime) + ".svg", format="svg")
     plt.show()
 
     # 绘制混淆矩阵
-    Confusion_matrix_path = photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "Confusion matrix" + str(nowTime) + ".jpg"
+    Confusion_matrix_path = photo_folder + "\\" + net_name + "网络" + "第{}折_".format(k_num) + "Confusion matrix" + str(nowTime) + ".svg"
     classes = ['negative', 'positive']
     modeltools.plot_confusion_matrix(cnf_matrix, classes=classes, normalize=False, title='Normalized confusion matrix', path=Confusion_matrix_path)
 
@@ -563,7 +565,7 @@ clr_1 = 'tab:green'
 clr_2 = 'tab:green'
 clr_3 = 'k'
 
-plt.figure()
+plt.figure(dpi=320)
 for i in range(k):
     fpr, tpr, thersholds = roc_curve(labels_k[i], pre_score_k[i])
     avg_x.append(sorted(random.sample(list(fpr), len(list(fpr)))))
@@ -628,6 +630,7 @@ for i in range(data_y_num):
     a = a / k
     data_y_plt.append(a)
 
+
 plt.plot(data_x_plt, data_y_plt, label='AVG (auc = {0:.4f})'.format(avg), c=clr_2, alpha=1, linewidth=2)
 plt.xlim([-0.05, 1.05])  # 设置x、y轴的上下限，以免和边缘重合，更好的观察图像的整体
 plt.ylim([-0.05, 1.05])
@@ -641,14 +644,14 @@ plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')  # 可以使用中文，但需要导入一些库即字体
 plt.title('ROC Curve')
 plt.legend(loc="lower right")
-plt.savefig(photo_folder + "\\" + net_name + "网络 model_ROC_" + str(nowTime) + ".jpg")
+plt.savefig(photo_folder + "\\" + net_name + "网络 model_ROC_" + str(nowTime) + ".svg", format="svg")
 plt.show()
 
 
 """
 绘制混淆矩阵，并保存
 """
-Confusion_matrix_path = photo_folder + "\\" + net_name + "网络 Confusion matrix" + str(nowTime) + ".jpg"
+Confusion_matrix_path = photo_folder + "\\" + net_name + "网络 Confusion matrix" + str(nowTime) + ".svg"
 # 第一种情况：显示百分比
 # classes = ['cat', 'dog']
 classes = ['negative', 'positive']
